@@ -34,8 +34,13 @@ those tiles, either by matching average color or by matching actual patch conten
 ## Building
 
 ```sh
-dotnet build MosaicGeneratorCLI.slnx -c Release
+dotnet build MosaicGenerator.slnx -c Release
 ```
+
+The solution is split into:
+
+- `MosaicGenerator.Core`: the mosaic engine (card database, GPU matching, compositing, PNG/Deep Zoom writers).
+- `MosaicGeneratorCLI`: the command-line front end described below.
 
 ## Usage
 

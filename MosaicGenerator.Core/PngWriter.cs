@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 // Writes a single PNG file by streaming strips row by row. The full image is never
 // held in memory at once, so output size is limited only by available disk space.

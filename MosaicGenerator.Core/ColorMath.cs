@@ -1,4 +1,4 @@
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public static class ColorMath
 {

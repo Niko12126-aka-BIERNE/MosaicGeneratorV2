@@ -1,7 +1,7 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public static class TileExtractor
 {

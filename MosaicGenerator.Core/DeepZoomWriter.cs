@@ -3,7 +3,7 @@ using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public static class DeepZoomWriter
 {

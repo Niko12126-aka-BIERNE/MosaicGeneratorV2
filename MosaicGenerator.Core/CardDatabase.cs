@@ -3,7 +3,7 @@ using System.Text.Json;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public readonly record struct CardRecord(string FileName, float L, float A, float B);
 

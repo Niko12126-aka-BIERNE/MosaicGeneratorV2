@@ -2,7 +2,7 @@ using ILGPU;
 using ILGPU.Runtime;
 using ILGPU.Runtime.Cuda;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public static class GpuCardMatcher
 {

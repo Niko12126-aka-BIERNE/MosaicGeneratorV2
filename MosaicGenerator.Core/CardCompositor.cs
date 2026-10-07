@@ -2,7 +2,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
-namespace MosaicGeneratorCLI;
+namespace MosaicGenerator.Core;
 
 public static class CardCompositor
 {
