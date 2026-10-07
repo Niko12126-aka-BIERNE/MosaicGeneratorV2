@@ -21,8 +21,12 @@ public static class CardDatabase
     ///         processed and the JSON is updated in place.</item>
     ///   <item>If it is already complete, the data is returned as-is.</item>
     /// </list>
+    /// If cancelled while processing new cards, the cards finished so far are still
+    /// saved to the JSON, so the next run doesn't have to redo them.
     /// </summary>
-    public static CardRecord[] LoadOrUpdate(string jsonPath, string cardFolderPath, Color background)
+    public static CardRecord[] LoadOrUpdate(
+        string jsonPath, string cardFolderPath, Color background,
+        ProgressReporter? progress = null, CancellationToken ct = default)
     {
         // Load whatever is already cached
         var existing = new Dictionary<string, RawCard>(StringComparer.OrdinalIgnoreCase);
@@ -34,21 +38,15 @@ public static class CardDatabase
                           File.ReadAllText(jsonPath), opts) ?? [];
             foreach (var card in raw)
                 existing[card.FileName] = card;
-            Console.WriteLine($"  Loaded {existing.Count} existing entries from JSON.");
+            progress?.Log($"  Loaded {existing.Count} existing entries from JSON.");
         }
         else
         {
-            Console.WriteLine("  No JSON found — will build it from scratch.");
+            progress?.Log("  No JSON found — will build it from scratch.");
         }
 
         // Discover image files on disk
-        if (!Directory.Exists(cardFolderPath))
-            throw new DirectoryNotFoundException($"Card folder not found: {cardFolderPath}");
-
-        string[] diskFiles = Directory
-            .GetFiles(cardFolderPath)
-            .Where(f => ImageExtensions.Contains(Path.GetExtension(f)))
-            .ToArray();
+        string[] diskFiles = FindCardImages(cardFolderPath);
 
         // Work out which cards are new (not yet in the JSON)
         string[] toProcess = diskFiles
@@ -57,53 +55,60 @@ public static class CardDatabase
 
         if (toProcess.Length > 0)
         {
-            Console.WriteLine($"  {toProcess.Length} new card(s) to process...");
+            progress?.Log($"  {toProcess.Length} new card(s) to process...");
 
             var newEntries = new ConcurrentDictionary<string, RawCard>(StringComparer.OrdinalIgnoreCase);
             int done = 0;
 
-            Parallel.ForEach(
-                toProcess,
-                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                file =>
-                {
-                    string name = Path.GetFileName(file);
-                    try
+            try
+            {
+                Parallel.ForEach(
+                    toProcess,
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
+                    file =>
                     {
-                        var (l, a, b) = ComputeAverageLab(file, background);
-                        newEntries[name] = new RawCard
+                        string name = Path.GetFileName(file);
+                        try
                         {
-                            FileName = name,
-                            AverageColor = new RawLabColor { L = l, A = a, B = b }
-                        };
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"  [WARN] Skipping {name}: {ex.Message}");
-                    }
+                            var (l, a, b) = ComputeAverageLab(file, background);
+                            newEntries[name] = new RawCard
+                            {
+                                FileName = name,
+                                AverageColor = new RawLabColor { L = l, A = a, B = b }
+                            };
+                        }
+                        catch (Exception ex)
+                        {
+                            progress?.Log($"  [WARN] Skipping {name}: {ex.Message}");
+                        }
 
-                    int n = Interlocked.Increment(ref done);
-                    if (n % 500 == 0 || n == toProcess.Length)
-                        Console.WriteLine($"    Processed {n}/{toProcess.Length}...");
-                });
+                        int n = Interlocked.Increment(ref done);
+                        progress?.Fraction(n, toProcess.Length);
+                        if (n % 500 == 0 || n == toProcess.Length)
+                            progress?.Log($"    Processed {n}/{toProcess.Length}...");
+                    });
+            }
+            finally
+            {
+                // Runs on cancellation too, so finished cards aren't processed again next time.
+                foreach (var (name, card) in newEntries)
+                    existing[name] = card;
 
-            foreach (var (name, card) in newEntries)
-                existing[name] = card;
+                // Ensure the target directory exists before writing
+                string? dir = Path.GetDirectoryName(jsonPath);
+                if (!string.IsNullOrEmpty(dir))
+                    Directory.CreateDirectory(dir);
 
-            // Ensure the target directory exists before writing
-            string? dir = Path.GetDirectoryName(jsonPath);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
+                var serOpts = new JsonSerializerOptions { WriteIndented = false };
+                File.WriteAllText(jsonPath,
+                    JsonSerializer.Serialize(existing.Values.ToArray(), serOpts));
 
-            var serOpts = new JsonSerializerOptions { WriteIndented = false };
-            File.WriteAllText(jsonPath,
-                JsonSerializer.Serialize(existing.Values.ToArray(), serOpts));
-
-            Console.WriteLine($"  JSON saved — {existing.Count} total entries.");
+                progress?.Log($"  JSON saved — {existing.Count} total entries.");
+            }
         }
         else
         {
-            Console.WriteLine("  Card database is up to date.");
+            progress?.Log("  Card database is up to date.");
         }
 
         // Return only entries whose image file is present on disk
@@ -121,16 +126,22 @@ public static class CardDatabase
             .ToArray();
     }
 
-    // Aspect ratio sampling
-    public static float SampleAspectRatio(string cardFolderPath, int sampleCount = 20)
+    /// <summary>Paths of all supported image files directly inside <paramref name="cardFolderPath"/>.</summary>
+    public static string[] FindCardImages(string cardFolderPath)
     {
         if (!Directory.Exists(cardFolderPath))
             throw new DirectoryNotFoundException($"Card folder not found: {cardFolderPath}");
 
-        string[] files = Directory
+        return Directory
             .GetFiles(cardFolderPath)
             .Where(f => ImageExtensions.Contains(Path.GetExtension(f)))
             .ToArray();
+    }
+
+    // Aspect ratio sampling
+    public static float SampleAspectRatio(string cardFolderPath, int sampleCount = 20)
+    {
+        string[] files = FindCardImages(cardFolderPath);
 
         if (files.Length == 0)
             throw new InvalidOperationException("No image files found in card folder.");

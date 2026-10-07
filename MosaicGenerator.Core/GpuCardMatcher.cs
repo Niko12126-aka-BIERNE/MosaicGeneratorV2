@@ -8,14 +8,17 @@ public static class GpuCardMatcher
 {
     // For every tile, finds the index of the closest card using CIEDE2000 on the GPU.
     // Returns an int[] of length tileCount where each element is an index into the cards array.
-    public static int[] Match(CardRecord[] cards, float[] tileColors, int tileCount)
+    // The GPU kernel itself can't be interrupted, so cancellation is checked before it starts.
+    public static int[] Match(
+        CardRecord[] cards, float[] tileColors, int tileCount,
+        ProgressReporter? progress = null, CancellationToken ct = default)
     {
         float[] cardColors = FlattenCardColors(cards);
 
         using var context = Context.Create(b => b.Cuda().EnableAlgorithms());
         using var accelerator = context.CreateCudaAccelerator(0);
 
-        Console.WriteLine($"  GPU: {accelerator.Name}");
+        progress?.Log($"  GPU: {accelerator.Name}");
 
         using var deviceCards   = accelerator.Allocate1D<float>(cardColors.Length);
         using var deviceTiles   = accelerator.Allocate1D<float>(tileColors.Length);
@@ -32,6 +35,7 @@ public static class GpuCardMatcher
             ArrayView1D<int, Stride1D.Dense>,
             int>(MatchKernel);
 
+        ct.ThrowIfCancellationRequested();
         kernel(tileCount, deviceCards.View, deviceTiles.View, deviceResults.View, cards.Length);
         accelerator.Synchronize();
 

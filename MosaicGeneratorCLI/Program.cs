@@ -1,8 +1,5 @@
 using MosaicGenerator.Core;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using System.Diagnostics;
 
 if (args.Length < 2)
 {
@@ -102,141 +99,59 @@ else if (OutputExists(outputPath, deepZoom))
 static bool OutputExists(string path, bool deepZoom) =>
     deepZoom ? Directory.Exists(path) : File.Exists(path);
 
-// Configuration summary
-string cardDataPath = Path.Combine(cardFolderPath, "allCardLabData.json");
+var options = new MosaicOptions
+{
+    InputPath             = inputPath,
+    CardFolderPath        = cardFolderPath,
+    OutputPath            = outputPath,
+    CardsPerRow           = cardsPerRow,
+    CardWidth             = cardWidth,
+    PatchMatch            = patchMatch,
+    MatchWidth            = matchWidth,
+    MatchCandidates       = matchCandidates,
+    LabSsd                = labSsd,
+    DeepZoom              = deepZoom,
+    Background            = background,
+    TransparencyThreshold = transparencyThreshold,
+};
 
-var totalTimer = Stopwatch.StartNew();
-var sw         = new Stopwatch();
+// First Ctrl+C asks the engine to stop cleanly (and remove partial output).
+// A second Ctrl+C kills the process as usual.
+using var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) =>
+{
+    if (cts.IsCancellationRequested)
+        return;
+    e.Cancel = true;
+    cts.Cancel();
+    Console.WriteLine("Cancelling... (press Ctrl+C again to force quit)");
+};
 
 Console.WriteLine("=== Mosaic Generator ===");
 Console.WriteLine();
-Console.WriteLine("Configuration:");
-Console.WriteLine($"  Input image   : {inputPath}");
-Console.WriteLine($"  Output        : {outputPath}");
-Console.WriteLine($"  Card folder   : {cardFolderPath}");
-Console.WriteLine($"  Card data     : {cardDataPath}");
-Console.WriteLine($"  Cards per row : {cardsPerRow}");
-Console.WriteLine($"  Card width    : {cardWidth}px");
-Console.WriteLine($"  Match mode    : {(patchMatch ? $"Patch match ({(labSsd ? "LAB" : "RGB")} SSD, {matchWidth}px wide, top {matchCandidates} candidates)" : "Colour match (CIEDE2000)")}");
-Console.WriteLine($"  Output mode   : {(deepZoom ? "Deep Zoom" : "PNG")}");
-Console.WriteLine($"  Background    : #{background.ToHex()[..6]} (used to flatten transparency for matching)");
-Console.WriteLine($"  Transparency  : tiles below {100 - transparencyThreshold}% opaque are left blank in the output");
-Console.WriteLine();
 
-// Aspect ratio
-Console.WriteLine("Sampling card aspect ratio...");
-sw.Restart();
-float aspectRatio = CardDatabase.SampleAspectRatio(cardFolderPath);
-int cardHeight = (int)(cardWidth * aspectRatio);
-Console.WriteLine($"  Ratio: {aspectRatio:F4}  |  card tile size: {cardWidth}x{cardHeight}px  ({sw.ElapsedMilliseconds}ms)");
-Console.WriteLine();
-
-// Card database
-Console.WriteLine("Loading card database...");
-sw.Restart();
-var cards = CardDatabase.LoadOrUpdate(cardDataPath, cardFolderPath, background);
-Console.WriteLine($"  {cards.Length} cards ready in {sw.ElapsedMilliseconds}ms");
-Console.WriteLine();
-
-// Input image
-Console.WriteLine("Loading input image...");
-sw.Restart();
-using var inputImageRaw = Image.Load<Rgba32>(inputPath);
-
-int mosaicWidth  = cardWidth * cardsPerRow;
-int mosaicHeight = (int)((double)mosaicWidth / inputImageRaw.Width * inputImageRaw.Height);
-int cols         = mosaicWidth  / cardWidth;
-int rows         = mosaicHeight / cardHeight;
-
-Console.WriteLine($"  Source        : {inputImageRaw.Width}x{inputImageRaw.Height}px");
-Console.WriteLine($"  Mosaic size   : {mosaicWidth}x{mosaicHeight}px");
-Console.WriteLine($"  Grid          : {cols} cols x {rows} rows = {cols * rows} tiles");
-Console.WriteLine($"  ({sw.ElapsedMilliseconds}ms)");
-Console.WriteLine();
-
-// Per-tile opacity. Decides which tiles get left blank in the output.
-Console.WriteLine("Measuring tile transparency...");
-sw.Restart();
-float[] tileOpacity    = ImageIO.ExtractTileOpacity(inputImageRaw, cols, rows);
-float   minTileOpacity = 1f - transparencyThreshold / 100f;
-int     blankTiles     = tileOpacity.Count(o => o < minTileOpacity);
-Console.WriteLine($"  {blankTiles}/{cols * rows} tiles will be left blank ({sw.ElapsedMilliseconds}ms)");
-Console.WriteLine();
-
-using var inputImage = ImageIO.Flatten(inputImageRaw, background);
-
-// Matching
-int[] tileCardIndices;
-
-if (patchMatch)
+try
 {
-    // Cap match width to the actual tile width. No point upscaling for matching
-    matchWidth = Math.Min(matchWidth, cardWidth);
-    int matchHeight = Math.Max(1, (int)Math.Round((double)matchWidth * aspectRatio));
-
-    // Scale input to the match-resolution grid: each tile slot becomes matchWidth × matchHeight
-    int matchGridWidth  = cols * matchWidth;
-    int matchGridHeight = rows * matchHeight;
-
-    Console.WriteLine("Scaling input image for patch matching...");
-    sw.Restart();
-    inputImage.Mutate(ctx => ctx.Resize(matchGridWidth, matchGridHeight));
-    Console.WriteLine($"  Scaled to {matchGridWidth}x{matchGridHeight}px ({matchWidth}px/tile) in {sw.ElapsedMilliseconds}ms");
-    Console.WriteLine();
-
-    Console.WriteLine("Running GPU patch matching...");
-    sw.Restart();
-    tileCardIndices = GpuPatchMatcher.Match(
-        cards, inputImage, cardFolderPath,
-        cols, rows, matchWidth, matchHeight, matchCandidates, labSsd, background);
-    Console.WriteLine($"  Done in {sw.ElapsedMilliseconds}ms");
+    MosaicPipeline.Run(options, new ConsoleProgress(), cts.Token);
 }
-else
+catch (OperationCanceledException)
 {
-    // Scale input to compact analysis resolution. 8 px per tile is enough for median colour
-    const int AnalysisPixelsPerTile = 8;
-    int analysisWidth  = cols * AnalysisPixelsPerTile;
-    int analysisHeight = rows * AnalysisPixelsPerTile;
-
-    Console.WriteLine("Scaling input image for colour analysis...");
-    sw.Restart();
-    inputImage.Mutate(ctx => ctx.Resize(analysisWidth, analysisHeight));
-    Console.WriteLine($"  Scaled to {analysisWidth}x{analysisHeight}px ({AnalysisPixelsPerTile}px/tile) in {sw.ElapsedMilliseconds}ms");
-    Console.WriteLine();
-
-    Console.WriteLine("Extracting tile colours...");
-    sw.Restart();
-    float[] tileColors = TileExtractor.Extract(inputImage, cols, rows, AnalysisPixelsPerTile, AnalysisPixelsPerTile);
-    Console.WriteLine($"  Done in {sw.ElapsedMilliseconds}ms");
-    Console.WriteLine();
-
-    Console.WriteLine("Running GPU colour matching...");
-    Console.WriteLine("  (First run compiles the CUDA kernel — may take a few seconds)");
-    sw.Restart();
-    tileCardIndices = GpuCardMatcher.Match(cards, tileColors, cols * rows);
-    Console.WriteLine($"  Done in {sw.ElapsedMilliseconds}ms");
+    Console.WriteLine("Cancelled.");
+    Environment.ExitCode = 1;
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+    Environment.ExitCode = 1;
 }
 
-Console.WriteLine();
-
-// Blank out tiles that are too transparent to bother placing a card on.
-for (int t = 0; t < tileCardIndices.Length; t++)
-    if (tileOpacity[t] < minTileOpacity)
-        tileCardIndices[t] = -1;
-
-// Composite and write output
-Console.WriteLine(deepZoom ? "Compositing and building Deep Zoom..." : "Compositing and saving PNG...");
-sw.Restart();
-
-var strips = CardCompositor.CompositeStrips(
-    tileCardIndices, cards, cardFolderPath,
-    cols, rows, cardWidth, cardHeight, mosaicWidth, background);
-
-if (deepZoom)
-    DeepZoomWriter.Write(outputPath, mosaicWidth, mosaicHeight, strips);
-else
-    PngWriter.Write(outputPath, mosaicWidth, mosaicHeight, strips);
-
-Console.WriteLine($"  Done in {sw.ElapsedMilliseconds}ms");
-Console.WriteLine();
-Console.WriteLine($"Total time: {totalTimer.Elapsed.TotalSeconds:F1}s");
+// Prints the engine's log lines. Written synchronously on purpose: Progress<T> would post
+// each line to the thread pool, and lines could then appear out of order.
+sealed class ConsoleProgress : IProgress<MosaicProgress>
+{
+    public void Report(MosaicProgress value)
+    {
+        if (value.Message != null)
+            Console.WriteLine(value.Message);
+    }
+}

@@ -26,6 +26,11 @@ public static class GpuPatchMatcher
     /// This avoids any ambiguity in how ILGPU handles byte-to-int sign extension in kernels,
     /// and matches the type convention used by <see cref="GpuCardMatcher"/>.
     /// </para>
+    /// <para>
+    /// Progress: loading card images covers the first half of the reported fraction and the
+    /// pre-filter most of the rest. The GPU kernel itself can't be interrupted or measured,
+    /// so cancellation is checked before it starts.
+    /// </para>
     /// </summary>
     public static int[] Match(
         CardRecord[] cards,
@@ -35,7 +40,9 @@ public static class GpuPatchMatcher
         int matchWidth, int matchHeight,
         int topK,
         bool labSsd,
-        Color background)
+        Color background,
+        ProgressReporter? progress = null,
+        CancellationToken ct = default)
     {
         int matchPixels3 = matchWidth * matchHeight * 3;   // floats per card/tile
         int tileCount    = cols * rows;
@@ -58,41 +65,46 @@ public static class GpuPatchMatcher
         using var context     = Context.Create(b => b.Cuda().EnableAlgorithms());
         using var accelerator = context.CreateCudaAccelerator(0);
 
-        Console.WriteLine($"  GPU              : {accelerator.Name}");
-        Console.WriteLine($"  Match resolution : {matchWidth}×{matchHeight}px per tile");
-        Console.WriteLine($"  Candidates       : top {effectiveK} of {cards.Length} cards per tile");
-        Console.WriteLine($"  Pixel metric     : {(labSsd ? "LAB SSD (perceptually uniform)" : "RGB SSD")}");
-        Console.WriteLine($"  Card buffer      : {cardElemCount * 4 / 1024 / 1024} MB");
-        Console.WriteLine($"  Tile buffer      : {tileElemCount * 4 / 1024 / 1024} MB");
+        progress?.Log($"  GPU              : {accelerator.Name}");
+        progress?.Log($"  Match resolution : {matchWidth}×{matchHeight}px per tile");
+        progress?.Log($"  Candidates       : top {effectiveK} of {cards.Length} cards per tile");
+        progress?.Log($"  Pixel metric     : {(labSsd ? "LAB SSD (perceptually uniform)" : "RGB SSD")}");
+        progress?.Log($"  Card buffer      : {cardElemCount * 4 / 1024 / 1024} MB");
+        progress?.Log($"  Tile buffer      : {tileElemCount * 4 / 1024 / 1024} MB");
 
         // Load all cards at match resolution
         float[] cardFloats = LoadCardFloats(
-            cards, cardFolderPath, matchWidth, matchHeight, matchPixels3, (int)cardElemCount, labSsd, background);
+            cards, cardFolderPath, matchWidth, matchHeight, matchPixels3, (int)cardElemCount, labSsd, background,
+            progress, ct);
 
         // Extract tile patches from the input image
         float[] tileFloats = ExtractTileFloats(
-            inputImage, cols, rows, matchWidth, matchHeight, matchPixels3, (int)tileElemCount, labSsd);
+            inputImage, cols, rows, matchWidth, matchHeight, matchPixels3, (int)tileElemCount, labSsd, ct);
 
         // CPU pre-filter: pick top-K candidates per tile by average LAB colour
-        Console.WriteLine("  Pre-filtering candidates by average colour...");
-        int[] candidateIndices = SelectTopKCandidates(tileFloats, cards, tileCount, matchPixels3, effectiveK, labSsd);
-        Console.WriteLine("  Pre-filter done.");
+        progress?.Log("  Pre-filtering candidates by average colour...");
+        int[] candidateIndices = SelectTopKCandidates(
+            tileFloats, cards, tileCount, matchPixels3, effectiveK, labSsd, progress, ct);
+        progress?.Log("  Pre-filter done.");
 
         // GPU: one thread per tile, SSD only against its K candidates
-        return RunGpuMatch(accelerator, cardFloats, tileFloats, candidateIndices, tileCount, matchPixels3, effectiveK);
+        return RunGpuMatch(
+            accelerator, cardFloats, tileFloats, candidateIndices, tileCount, matchPixels3, effectiveK,
+            progress, ct);
     }
 
     // Card loading
     private static float[] LoadCardFloats(
         CardRecord[] cards, string cardFolderPath,
         int matchWidth, int matchHeight, int matchPixels3,
-        int totalElements, bool labSsd, Color background)
+        int totalElements, bool labSsd, Color background,
+        ProgressReporter? progress, CancellationToken ct)
     {
         float[] cardFloats = new float[totalElements];
         int     done       = 0;
 
         Parallel.For(0, cards.Length,
-            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
             i =>
             {
                 string path = Path.Combine(cardFolderPath, cards[i].FileName);
@@ -126,8 +138,9 @@ public static class GpuPatchMatcher
                 });
 
                 int n = Interlocked.Increment(ref done);
+                progress?.Fraction(0.5 * n / cards.Length);
                 if (n % 1000 == 0 || n == cards.Length)
-                    Console.WriteLine($"    Loaded {n}/{cards.Length} card images...");
+                    progress?.Log($"    Loaded {n}/{cards.Length} card images...");
             });
 
         return cardFloats;
@@ -139,7 +152,7 @@ public static class GpuPatchMatcher
         Image<Rgb24> image,
         int cols, int rows,
         int matchWidth, int matchHeight, int matchPixels3,
-        int totalElements, bool labSsd)
+        int totalElements, bool labSsd, CancellationToken ct)
     {
         // Copy input pixels to a flat array once for lock-free parallel reads.
         var inputPixels = new Rgb24[image.Width * image.Height];
@@ -151,7 +164,7 @@ public static class GpuPatchMatcher
 
         float[] tileFloats = new float[totalElements];
 
-        Parallel.For(0, rows, row =>
+        Parallel.For(0, rows, new ParallelOptions { CancellationToken = ct }, row =>
         {
             for (int col = 0; col < cols; col++)
             {
@@ -190,7 +203,8 @@ public static class GpuPatchMatcher
     // CPU candidate pre-filter
     private static int[] SelectTopKCandidates(
         float[] tileFloats, CardRecord[] cards,
-        int tileCount, int matchPixels3, int K, bool labSsd)
+        int tileCount, int matchPixels3, int K, bool labSsd,
+        ProgressReporter? progress, CancellationToken ct)
     {
         int cardCount   = cards.Length;
         int matchPixels = matchPixels3 / 3;   // number of pixels per tile
@@ -206,7 +220,9 @@ public static class GpuPatchMatcher
             return arr;
         });
 
-        Parallel.For(0, tileCount, ti =>
+        int done = 0;
+
+        Parallel.For(0, tileCount, new ParallelOptions { CancellationToken = ct }, ti =>
         {
             int tileBase = ti * matchPixels3;
             float tL, tA, tB;
@@ -264,6 +280,8 @@ public static class GpuPatchMatcher
 
             // Reset the index buffer for the next tile this thread will process.
             for (int c = 0; c < cardCount; c++) idxs[c] = c;
+
+            progress?.Fraction(0.5 + 0.4 * Interlocked.Increment(ref done) / tileCount);
         });
 
         return candidateIndices;
@@ -274,7 +292,8 @@ public static class GpuPatchMatcher
         CudaAccelerator accelerator,
         float[] cardFloats, float[] tileFloats,
         int[] candidateIndices,
-        int tileCount, int matchPixels3, int K)
+        int tileCount, int matchPixels3, int K,
+        ProgressReporter? progress, CancellationToken ct)
     {
         using var deviceCards      = accelerator.Allocate1D<float>(cardFloats.Length);
         using var deviceTiles      = accelerator.Allocate1D<float>(tileFloats.Length);
@@ -286,7 +305,7 @@ public static class GpuPatchMatcher
         deviceCandidates.CopyFromCPU(candidateIndices);
 
         // JIT-compilation happens here. Can take 15–30 seconds on the first run of the session.
-        Console.WriteLine("  Compiling GPU kernel (first run may take ~30s)...");
+        progress?.Log("  Compiling GPU kernel (first run may take ~30s)...");
         var kernel = accelerator.LoadAutoGroupedStreamKernel<
             Index1D,
             ArrayView1D<float, Stride1D.Dense>,
@@ -295,10 +314,12 @@ public static class GpuPatchMatcher
             ArrayView1D<int,   Stride1D.Dense>,
             int, int>(MatchKernel);
 
-        Console.WriteLine($"  Matching {tileCount} tiles × {K} candidates — this may take a while...");
+        ct.ThrowIfCancellationRequested();
+        progress?.Log($"  Matching {tileCount} tiles × {K} candidates — this may take a while...");
         kernel(tileCount, deviceCards.View, deviceTiles.View, deviceCandidates.View, deviceResults.View, K, matchPixels3);
         accelerator.Synchronize();
-        Console.WriteLine("  Done.");
+        progress?.Log("  Done.");
+        progress?.Fraction(1);
 
         return deviceResults.GetAsArray1D();
     }

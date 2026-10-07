@@ -16,15 +16,21 @@ public static class PngWriter
     // keep per-chunk overhead negligible for even the largest mosaics.
     private const int IdatChunkSize = 128 * 1024;
 
-    public static void Write(string path, int width, int height, IEnumerable<Image<Rgba32>> strips)
+    // Returns the path written. Reports the fraction of rows written. On cancellation the
+    // file is left incomplete; the caller is responsible for deleting it.
+    public static string Write(
+        string path, int width, int height, IEnumerable<Image<Rgba32>> strips,
+        ProgressReporter? progress = null, CancellationToken ct = default)
     {
         using var file = new FileStream(path, FileMode.Create, FileAccess.Write,
             FileShare.None, bufferSize: 1 << 16);
 
         file.Write(Signature);
         WriteIhdr(file, width, height);
-        WritePixelData(file, strips);
+        WritePixelData(file, height, strips, progress, ct);
         WriteIend(file);
+
+        return path;
     }
 
     // Chunks
@@ -41,8 +47,12 @@ public static class PngWriter
         WriteChunk(file, "IHDR"u8, data);
     }
 
-    private static void WritePixelData(Stream file, IEnumerable<Image<Rgba32>> strips)
+    private static void WritePixelData(
+        Stream file, int height, IEnumerable<Image<Rgba32>> strips,
+        ProgressReporter? progress, CancellationToken ct)
     {
+        int rowsWritten = 0;
+
         // using declarations dispose in reverse (LIFO) order:
         //   zlib is disposed first. Finalises the deflate stream and writes Adler-32
         //   idatWriter is disposed next. Flushes any remaining bytes as the last IDAT chunk
@@ -58,8 +68,10 @@ public static class PngWriter
                     Span<byte> filterByte = [0]; // PNG filter type 0: None
                     for (int y = 0; y < strip.Height; y++)
                     {
+                        ct.ThrowIfCancellationRequested();
                         zlib.Write(filterByte);
                         zlib.Write(MemoryMarshal.AsBytes(accessor.GetRowSpan(y)));
+                        progress?.Fraction(++rowsWritten, height);
                     }
                 });
             }

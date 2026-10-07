@@ -19,18 +19,20 @@ public static class CardCompositor
         int cols, int rows,
         int tileWidth, int tileHeight,
         int mosaicWidth,
-        Color background)
+        Color background,
+        ProgressReporter? progress = null,
+        CancellationToken ct = default)
     {
         long bytesPerTileRow     = (long)mosaicWidth * tileHeight * 4;
         int  maxTileRowsPerStrip = Math.Max(1, (int)(MaxStripBytes / bytesPerTileRow));
 
         var uniqueIndices = tileCardIndices.Where(i => i >= 0).Distinct().ToArray();
-        Console.WriteLine($"  Loading {uniqueIndices.Length} unique card images (out of {cards.Length} total)...");
+        progress?.Log($"  Loading {uniqueIndices.Length} unique card images (out of {cards.Length} total)...");
 
         var cardPixels = new Dictionary<int, Rgba32[]>(uniqueIndices.Length);
         var dictLock   = new object();
 
-        Parallel.ForEach(uniqueIndices, cardIndex =>
+        Parallel.ForEach(uniqueIndices, new ParallelOptions { CancellationToken = ct }, cardIndex =>
         {
             string path = Path.Combine(cardFolderPath, cards[cardIndex].FileName);
             using var original = ImageIO.LoadFlattenedRgba(path, background);
@@ -49,6 +51,8 @@ public static class CardCompositor
 
         for (int stripStart = 0; stripStart < rows; stripStart += maxTileRowsPerStrip)
         {
+            ct.ThrowIfCancellationRequested();
+
             int stripEnd    = Math.Min(stripStart + maxTileRowsPerStrip, rows);
             int stripRows   = stripEnd - stripStart;
             int stripHeight = stripRows * tileHeight;

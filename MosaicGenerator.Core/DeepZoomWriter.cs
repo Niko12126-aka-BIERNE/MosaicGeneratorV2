@@ -10,40 +10,58 @@ public static class DeepZoomWriter
     private const int TileSize = 256;
     private static readonly PngEncoder TilePng = new() { CompressionLevel = PngCompressionLevel.Level3 };
 
-    public static void Write(string outputPath, int width, int height, IEnumerable<Image<Rgba32>> strips)
+    // Share of the reported progress fraction spent writing the full-resolution tiles.
+    // The rest is the zoom pyramid, which has about a third as many tiles.
+    private const double MaxLevelShare = 0.75;
+
+    /// <summary>
+    /// The folder the Deep Zoom output for <paramref name="outputPath"/> is written into.
+    /// All output lives inside this one folder, with no loose files alongside it.
+    /// </summary>
+    public static string GetOutputFolder(string outputPath)
     {
         string dir  = Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? ".";
         string stem = Path.GetFileNameWithoutExtension(outputPath);
+        return Path.Combine(dir, stem);
+    }
 
-        // All output lives inside one folder. No loose files alongside it.
-        string outDir   = Path.Combine(dir, stem);
+    // Writes the tiles, index.dzi and index.html. Returns the path of index.html.
+    // On cancellation the folder is left incomplete; the caller decides whether to delete it.
+    public static string Write(
+        string outputPath, int width, int height, IEnumerable<Image<Rgba32>> strips,
+        ProgressReporter? progress = null, CancellationToken ct = default)
+    {
+        string outDir   = GetOutputFolder(outputPath);
         string filesDir = Path.Combine(outDir, "index_files");
         string dziPath  = Path.Combine(outDir, "index.dzi");
         string htmlPath = Path.Combine(outDir, "index.html");
         Directory.CreateDirectory(outDir);
 
         int maxLevel = MaxLevel(width, height);
-        Console.WriteLine($"  Max zoom level: {maxLevel}");
+        progress?.Log($"  Max zoom level: {maxLevel}");
 
         string maxLevelDir = Path.Combine(filesDir, maxLevel.ToString());
         Directory.CreateDirectory(maxLevelDir);
 
         int maxCols = TileCols(width);
         int maxRows = TileRows(height);
-        Console.WriteLine($"  Writing {maxCols * maxRows} tiles at level {maxLevel}...");
-        WriteMaxLevelTiles(maxLevelDir, width, height, strips);
+        progress?.Log($"  Writing {maxCols * maxRows} tiles at level {maxLevel}...");
+        WriteMaxLevelTiles(maxLevelDir, width, height, strips, progress, ct);
 
-        Console.WriteLine("  Building zoom pyramid...");
-        BuildPyramid(filesDir, maxLevel, width, height);
+        progress?.Log("  Building zoom pyramid...");
+        BuildPyramid(filesDir, maxLevel, width, height, progress, ct);
 
         WriteDzi(dziPath, width, height);
         WriteHtml(htmlPath, "index_files", width, height);
-        Console.WriteLine($"  Open {outDir}{Path.DirectorySeparatorChar}index.html in a browser to view.");
+        progress?.Log($"  Open {outDir}{Path.DirectorySeparatorChar}index.html in a browser to view.");
+
+        return htmlPath;
     }
 
     // Max-level tile generation
     private static void WriteMaxLevelTiles(
-        string levelDir, int width, int height, IEnumerable<Image<Rgba32>> strips)
+        string levelDir, int width, int height, IEnumerable<Image<Rgba32>> strips,
+        ProgressReporter? progress, CancellationToken ct)
     {
         var rowBuf  = new Rgba32[width * TileSize];
         int yOffset = 0;
@@ -56,6 +74,7 @@ public static class DeepZoomWriter
                 {
                     for (int y = 0; y < strip.Height; y++)
                     {
+                        ct.ThrowIfCancellationRequested();
                         int fullY     = yOffset + y;
                         int rowInTile = fullY % TileSize;
 
@@ -65,8 +84,10 @@ public static class DeepZoomWriter
                         {
                             int tileRow  = fullY / TileSize;
                             int rowCount = rowInTile + 1;
-                            SaveTileColumns(levelDir, rowBuf, width, tileRow, rowCount);
+                            SaveTileColumns(levelDir, rowBuf, width, tileRow, rowCount, ct);
                         }
+
+                        progress?.Fraction(MaxLevelShare * (fullY + 1) / height);
                     }
                 });
                 yOffset += strip.Height;
@@ -75,10 +96,10 @@ public static class DeepZoomWriter
     }
 
     private static void SaveTileColumns(
-        string levelDir, Rgba32[] rowBuf, int width, int tileRow, int rowCount)
+        string levelDir, Rgba32[] rowBuf, int width, int tileRow, int rowCount, CancellationToken ct)
     {
         int numCols = TileCols(width);
-        Parallel.For(0, numCols, col =>
+        Parallel.For(0, numCols, new ParallelOptions { CancellationToken = ct }, col =>
         {
             int tileX = col * TileSize;
             int tileW = Math.Min(TileSize, width - tileX);
@@ -96,8 +117,15 @@ public static class DeepZoomWriter
     }
 
     // Pyramid builder
-    private static void BuildPyramid(string filesDir, int maxLevel, int width, int height)
+    private static void BuildPyramid(
+        string filesDir, int maxLevel, int width, int height,
+        ProgressReporter? progress, CancellationToken ct)
     {
+        long totalTiles = 0;
+        for (int lev = maxLevel - 1; lev >= 0; lev--)
+            totalTiles += (long)TileCols(LevelDim(width, maxLevel, lev)) * TileRows(LevelDim(height, maxLevel, lev));
+        long doneTiles = 0;
+
         for (int lev = maxLevel - 1; lev >= 0; lev--)
         {
             int levW = LevelDim(width,  maxLevel, lev);
@@ -112,13 +140,16 @@ public static class DeepZoomWriter
             string srcLevelDir = Path.Combine(filesDir, (lev + 1).ToString());
             Directory.CreateDirectory(levelDir);
 
-            Console.WriteLine($"    Level {lev}: {levW}x{levH} ({levCols * levRows} tiles)");
+            progress?.Log($"    Level {lev}: {levW}x{levH} ({levCols * levRows} tiles)");
 
-            Parallel.For(0, levRows * levCols, idx =>
+            Parallel.For(0, levRows * levCols, new ParallelOptions { CancellationToken = ct }, idx =>
             {
                 int row = idx / levCols;
                 int col = idx % levCols;
                 BuildTile(levelDir, srcLevelDir, col, row, levW, levH, srcW, srcH);
+
+                long done = Interlocked.Increment(ref doneTiles);
+                progress?.Fraction(MaxLevelShare + (1 - MaxLevelShare) * done / totalTiles);
             });
         }
     }
