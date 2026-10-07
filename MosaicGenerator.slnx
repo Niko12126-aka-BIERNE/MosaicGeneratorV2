@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="MosaicGenerator.Core/MosaicGenerator.Core.csproj" />
+  <Project Path="MosaicGenerator.Sidecar/MosaicGenerator.Sidecar.csproj" />
   <Project Path="MosaicGeneratorCLI/MosaicGeneratorCLI.csproj" />
 </Solution>

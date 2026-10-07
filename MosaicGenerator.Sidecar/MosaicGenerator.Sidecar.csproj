@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- The executable the Tauri app starts: mosaic-sidecar(.exe) -->
+    <AssemblyName>mosaic-sidecar</AssemblyName>
+    <RootNamespace>MosaicGenerator.Sidecar</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MosaicGenerator.Core\MosaicGenerator.Core.csproj" />
+  </ItemGroup>
+
+</Project>

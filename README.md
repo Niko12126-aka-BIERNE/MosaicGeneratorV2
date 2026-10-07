@@ -41,6 +41,8 @@ The solution is split into:
 
 - `MosaicGenerator.Core`: the mosaic engine (card database, GPU matching, compositing, PNG/Deep Zoom writers).
 - `MosaicGeneratorCLI`: the command-line front end described below.
+- `MosaicGenerator.Sidecar`: a background process the GUI talks to over JSON lines on
+  stdin/stdout. See its [README](MosaicGenerator.Sidecar/README.md).
 
 ## Usage
 
