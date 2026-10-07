@@ -10,6 +10,9 @@ namespace MosaicGenerator.Sidecar;
 /// </summary>
 public static class Handlers
 {
+    /// <summary>Set by a "shutdown" request; Program.cs exits after sending its response.</summary>
+    public static bool ShutdownRequested { get; private set; }
+
     public static object? Handle(string type, JsonElement request) => type switch
     {
         "systemInfo"     => SystemInfo(),
@@ -19,8 +22,18 @@ public static class Handlers
         "validate"       => Validate(Read<OptionsRequest>(request)),
         "start"          => Start(Read<OptionsRequest>(request)),
         "cancel"         => new CancelResult(MosaicJob.Cancel()),
+        "shutdown"       => Shutdown(),
         _                => throw new RequestException($"Unknown request type '{type}'."),
     };
+
+    // The app sends this before it closes. Tauri force-kills child processes on exit, so this
+    // is our chance to stop a running job cleanly and remove its partial output first.
+    private static object? Shutdown()
+    {
+        MosaicJob.CancelAndWait();
+        ShutdownRequested = true;
+        return null;
+    }
 
     private static SystemInfoResult SystemInfo() =>
         new(GpuInfo.FindCudaDevices());

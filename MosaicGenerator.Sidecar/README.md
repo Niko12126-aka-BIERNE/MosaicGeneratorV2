@@ -18,8 +18,9 @@ prints. Here, the "person" is the app:
  reads JSON lines from stdout  ◄───────   writes a response + progress events
 ```
 
-When the app closes, the sidecar's stdin is closed. The sidecar then cancels any running
-job, cleans up its partial output, and exits.
+When the app closes, it sends a `shutdown` request first, because Tauri force-kills child
+processes on exit. The sidecar then cancels any running job, cleans up its partial output,
+replies, and exits. If stdin is closed without a `shutdown`, the sidecar does the same.
 
 ## How the code is organised
 
@@ -61,6 +62,7 @@ every request with exactly one `response` carrying the same `id`.
 | `validate` | `options` | `{ "errors": ["Card folder not found: ..."] }` (empty list when the options are fine) |
 | `start` | `options` | none. The job runs in the background and reports through events. Refused if a job is already running or the options are invalid. |
 | `cancel` | none | `{ "wasRunning": true }` |
+| `shutdown` | none | none. Cancels any running job and waits for its cleanup, then the sidecar exits after sending this response. |
 
 `options` holds the mosaic settings. Anything left out gets the engine's default:
 

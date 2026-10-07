@@ -18,14 +18,14 @@ Output.Send(new ReadyEvent(Protocol.Version));
 
 // The main loop: read a request, handle it, send the response. Generating a mosaic runs
 // on a background thread (MosaicJob), so this loop keeps answering, e.g. to "cancel".
-while (stdin.ReadLine() is string line)
+while (!Handlers.ShutdownRequested && stdin.ReadLine() is string line)
 {
     if (!string.IsNullOrWhiteSpace(line))
         HandleRequest(line);
 }
 
-// stdin was closed, which means the app exited or is shutting us down. Stop a running job
-// cleanly so its partial output is removed, then exit.
+// We get here after a "shutdown" request, or when stdin is closed (the app exited without
+// sending one). Either way, stop a running job cleanly so its partial output is removed.
 MosaicJob.CancelAndWait();
 
 static void HandleRequest(string line)

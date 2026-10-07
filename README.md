@@ -43,6 +43,7 @@ The solution is split into:
 - `MosaicGeneratorCLI`: the command-line front end described below.
 - `MosaicGenerator.Sidecar`: a background process the GUI talks to over JSON lines on
   stdin/stdout. See its [README](MosaicGenerator.Sidecar/README.md).
+- `MosaicGeneratorGUI`: the desktop app (Tauri + React). See its [README](MosaicGeneratorGUI/README.md).
 
 ## Usage
 
