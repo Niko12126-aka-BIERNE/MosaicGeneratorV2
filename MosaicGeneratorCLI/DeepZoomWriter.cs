@@ -10,7 +10,7 @@ public static class DeepZoomWriter
     private const int TileSize = 256;
     private static readonly PngEncoder TilePng = new() { CompressionLevel = PngCompressionLevel.Level3 };
 
-    public static void Write(string outputPath, int width, int height, IEnumerable<Image<Rgb24>> strips)
+    public static void Write(string outputPath, int width, int height, IEnumerable<Image<Rgba32>> strips)
     {
         string dir  = Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? ".";
         string stem = Path.GetFileNameWithoutExtension(outputPath);
@@ -43,9 +43,9 @@ public static class DeepZoomWriter
 
     // Max-level tile generation
     private static void WriteMaxLevelTiles(
-        string levelDir, int width, int height, IEnumerable<Image<Rgb24>> strips)
+        string levelDir, int width, int height, IEnumerable<Image<Rgba32>> strips)
     {
-        var rowBuf  = new Rgb24[width * TileSize];
+        var rowBuf  = new Rgba32[width * TileSize];
         int yOffset = 0;
 
         foreach (var strip in strips)
@@ -75,7 +75,7 @@ public static class DeepZoomWriter
     }
 
     private static void SaveTileColumns(
-        string levelDir, Rgb24[] rowBuf, int width, int tileRow, int rowCount)
+        string levelDir, Rgba32[] rowBuf, int width, int tileRow, int rowCount)
     {
         int numCols = TileCols(width);
         Parallel.For(0, numCols, col =>
@@ -83,7 +83,7 @@ public static class DeepZoomWriter
             int tileX = col * TileSize;
             int tileW = Math.Min(TileSize, width - tileX);
 
-            using var tile = new Image<Rgb24>(tileW, rowCount);
+            using var tile = new Image<Rgba32>(tileW, rowCount);
             tile.ProcessPixelRows(accessor =>
             {
                 for (int r = 0; r < rowCount; r++)
@@ -134,7 +134,7 @@ public static class DeepZoomWriter
         int stitchW = srcX1 - srcX0;
         int stitchH = srcY1 - srcY0;
 
-        using var stitched = new Image<Rgb24>(stitchW, stitchH);
+        using var stitched = new Image<Rgba32>(stitchW, stitchH);
 
         int tcStart = srcX0 / TileSize;
         int tcEnd   = (srcX1 - 1) / TileSize;
@@ -148,7 +148,7 @@ public static class DeepZoomWriter
                 string srcPath = Path.Combine(srcLevelDir, $"{tc}_{tr}.png");
                 if (!File.Exists(srcPath)) continue;
 
-                using var srcTile = Image.Load<Rgb24>(srcPath);
+                using var srcTile = Image.Load<Rgba32>(srcPath);
 
                 int tileAbsX = tc * TileSize;
                 int tileAbsY = tr * TileSize;

@@ -11,30 +11,32 @@ public static class CardCompositor
 
     // Yields one strip image at a time. Caller must dispose each before requesting the next.
     // Strips keep individual ImageSharp allocations under 2 GB (its hard 4 GB cap).
-    public static IEnumerable<Image<Rgb24>> CompositeStrips(
+    // A tileCardIndices value of -1 means "leave this tile blank" (fully transparent).
+    public static IEnumerable<Image<Rgba32>> CompositeStrips(
         int[] tileCardIndices,
         CardRecord[] cards,
         string cardFolderPath,
         int cols, int rows,
         int tileWidth, int tileHeight,
-        int mosaicWidth)
+        int mosaicWidth,
+        Color background)
     {
-        long bytesPerTileRow     = (long)mosaicWidth * tileHeight * 3;
+        long bytesPerTileRow     = (long)mosaicWidth * tileHeight * 4;
         int  maxTileRowsPerStrip = Math.Max(1, (int)(MaxStripBytes / bytesPerTileRow));
 
-        var uniqueIndices = tileCardIndices.Distinct().ToArray();
+        var uniqueIndices = tileCardIndices.Where(i => i >= 0).Distinct().ToArray();
         Console.WriteLine($"  Loading {uniqueIndices.Length} unique card images (out of {cards.Length} total)...");
 
-        var cardPixels = new Dictionary<int, Rgb24[]>(uniqueIndices.Length);
+        var cardPixels = new Dictionary<int, Rgba32[]>(uniqueIndices.Length);
         var dictLock   = new object();
 
         Parallel.ForEach(uniqueIndices, cardIndex =>
         {
             string path = Path.Combine(cardFolderPath, cards[cardIndex].FileName);
-            using var original = Image.Load<Rgb24>(path);
+            using var original = ImageIO.LoadFlattenedRgba(path, background);
             original.Mutate(ctx => ctx.Resize(tileWidth, tileHeight));
 
-            var flat = new Rgb24[tileWidth * tileHeight];
+            var flat = new Rgba32[tileWidth * tileHeight];
             original.ProcessPixelRows(accessor =>
             {
                 for (int y = 0; y < tileHeight; y++)
@@ -51,7 +53,7 @@ public static class CardCompositor
             int stripRows   = stripEnd - stripStart;
             int stripHeight = stripRows * tileHeight;
 
-            var strip = new Image<Rgb24>(mosaicWidth, stripHeight);
+            var strip = new Image<Rgba32>(mosaicWidth, stripHeight);
 
             strip.ProcessPixelRows(mosaicAccessor =>
             {
@@ -60,9 +62,13 @@ public static class CardCompositor
                     int localRow = row - stripStart;
                     for (int col = 0; col < cols; col++)
                     {
-                        Rgb24[] src = cardPixels[tileCardIndices[row * cols + col]];
-                        int destX   = col * tileWidth;
-                        int destY   = localRow * tileHeight;
+                        int cardIndex = tileCardIndices[row * cols + col];
+                        if (cardIndex < 0)
+                            continue; // leave blank/transparent
+
+                        Rgba32[] src = cardPixels[cardIndex];
+                        int destX    = col * tileWidth;
+                        int destY    = localRow * tileHeight;
 
                         for (int cy = 0; cy < tileHeight; cy++)
                         {

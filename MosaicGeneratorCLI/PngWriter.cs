@@ -16,7 +16,7 @@ public static class PngWriter
     // keep per-chunk overhead negligible for even the largest mosaics.
     private const int IdatChunkSize = 128 * 1024;
 
-    public static void Write(string path, int width, int height, IEnumerable<Image<Rgb24>> strips)
+    public static void Write(string path, int width, int height, IEnumerable<Image<Rgba32>> strips)
     {
         using var file = new FileStream(path, FileMode.Create, FileAccess.Write,
             FileShare.None, bufferSize: 1 << 16);
@@ -34,14 +34,14 @@ public static class PngWriter
         WriteBE32(data, 0, (uint)width);
         WriteBE32(data, 4, (uint)height);
         data[8]  = 8; // bit depth: 8 bits per channel
-        data[9]  = 2; // colour type: RGB (no alpha)
+        data[9]  = 6; // colour type: RGBA
         data[10] = 0; // compression: deflate (only valid value)
         data[11] = 0; // filter method: adaptive (only valid value)
         data[12] = 0; // interlace: none
         WriteChunk(file, "IHDR"u8, data);
     }
 
-    private static void WritePixelData(Stream file, IEnumerable<Image<Rgb24>> strips)
+    private static void WritePixelData(Stream file, IEnumerable<Image<Rgba32>> strips)
     {
         // using declarations dispose in reverse (LIFO) order:
         //   zlib is disposed first. Finalises the deflate stream and writes Adler-32

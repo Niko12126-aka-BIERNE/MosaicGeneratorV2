@@ -34,7 +34,8 @@ public static class GpuPatchMatcher
         int cols, int rows,
         int matchWidth, int matchHeight,
         int topK,
-        bool labSsd)
+        bool labSsd,
+        Color background)
     {
         int matchPixels3 = matchWidth * matchHeight * 3;   // floats per card/tile
         int tileCount    = cols * rows;
@@ -66,7 +67,7 @@ public static class GpuPatchMatcher
 
         // Load all cards at match resolution
         float[] cardFloats = LoadCardFloats(
-            cards, cardFolderPath, matchWidth, matchHeight, matchPixels3, (int)cardElemCount, labSsd);
+            cards, cardFolderPath, matchWidth, matchHeight, matchPixels3, (int)cardElemCount, labSsd, background);
 
         // Extract tile patches from the input image
         float[] tileFloats = ExtractTileFloats(
@@ -85,7 +86,7 @@ public static class GpuPatchMatcher
     private static float[] LoadCardFloats(
         CardRecord[] cards, string cardFolderPath,
         int matchWidth, int matchHeight, int matchPixels3,
-        int totalElements, bool labSsd)
+        int totalElements, bool labSsd, Color background)
     {
         float[] cardFloats = new float[totalElements];
         int     done       = 0;
@@ -95,7 +96,7 @@ public static class GpuPatchMatcher
             i =>
             {
                 string path = Path.Combine(cardFolderPath, cards[i].FileName);
-                using var img = Image.Load<Rgb24>(path);
+                using var img = ImageIO.LoadFlattened(path, background);
                 img.Mutate(ctx => ctx.Resize(matchWidth, matchHeight));
 
                 int cardBase = i * matchPixels3;

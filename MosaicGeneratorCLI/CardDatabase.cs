@@ -22,7 +22,7 @@ public static class CardDatabase
     ///   <item>If it is already complete, the data is returned as-is.</item>
     /// </list>
     /// </summary>
-    public static CardRecord[] LoadOrUpdate(string jsonPath, string cardFolderPath)
+    public static CardRecord[] LoadOrUpdate(string jsonPath, string cardFolderPath, Color background)
     {
         // Load whatever is already cached
         var existing = new Dictionary<string, RawCard>(StringComparer.OrdinalIgnoreCase);
@@ -70,7 +70,7 @@ public static class CardDatabase
                     string name = Path.GetFileName(file);
                     try
                     {
-                        var (l, a, b) = ComputeAverageLab(file);
+                        var (l, a, b) = ComputeAverageLab(file, background);
                         newEntries[name] = new RawCard
                         {
                             FileName = name,
@@ -163,9 +163,9 @@ public static class CardDatabase
     }
 
     // Image processing
-    private static (float L, float A, float B) ComputeAverageLab(string imagePath)
+    private static (float L, float A, float B) ComputeAverageLab(string imagePath, Color background)
     {
-        using var image = Image.Load<Rgb24>(imagePath);
+        using var image = ImageIO.LoadFlattened(imagePath, background);
 
         long sumR = 0, sumG = 0, sumB = 0;
         int totalPixels = image.Width * image.Height;

@@ -25,6 +25,8 @@ if (args.Length < 2)
     Console.WriteLine("  --match-candidates <n> Top-K candidate cards per tile for patch matching (default: 500) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --lab-ssd              Use perceptually uniform LAB SSD instead of RGB SSD (slower, better colors and contrast in some scenarios)");
     Console.WriteLine("  --deep-zoom            Generate Deep Zoom tiles + HTML viewer instead of PNG (great for large images, that would be too large for a single PNG)");
+    Console.WriteLine("  --background-color <hex>  Background to flatten transparent pixels onto, e.g. FFFFFF (default: black)");
+    Console.WriteLine("  --transparency-threshold <pct>  Tiles more transparent than this are left blank in the output (default: 70)");
     return;
 }
 
@@ -38,6 +40,8 @@ int matchWidth        = 64;
 int matchCandidates   = 500;
 bool labSsd           = false;
 bool deepZoom         = false;
+Color background      = Color.Black;
+int transparencyThreshold = 70;
 
 // args[2] is the optional output path only if it doesn't look like a flag
 int optStart = 2;
@@ -58,6 +62,8 @@ for (int i = optStart; i < args.Length; i++)
         case "--match-candidates":  matchCandidates = int.Parse(args[++i]); break;
         case "--lab-ssd":           labSsd          = true;                 break;
         case "--deep-zoom":         deepZoom        = true;                 break;
+        case "--background-color": background      = ImageIO.ParseBackgroundColor(args[++i]); break;
+        case "--transparency-threshold": transparencyThreshold = int.Parse(args[++i]); break;
     }
 }
 
@@ -113,6 +119,8 @@ Console.WriteLine($"  Cards per row : {cardsPerRow}");
 Console.WriteLine($"  Card width    : {cardWidth}px");
 Console.WriteLine($"  Match mode    : {(patchMatch ? $"Patch match ({(labSsd ? "LAB" : "RGB")} SSD, {matchWidth}px wide, top {matchCandidates} candidates)" : "Colour match (CIEDE2000)")}");
 Console.WriteLine($"  Output mode   : {(deepZoom ? "Deep Zoom" : "PNG")}");
+Console.WriteLine($"  Background    : #{background.ToHex()[..6]} (used to flatten transparency for matching)");
+Console.WriteLine($"  Transparency  : tiles below {100 - transparencyThreshold}% opaque are left blank in the output");
 Console.WriteLine();
 
 // Aspect ratio
@@ -126,25 +134,36 @@ Console.WriteLine();
 // Card database
 Console.WriteLine("Loading card database...");
 sw.Restart();
-var cards = CardDatabase.LoadOrUpdate(cardDataPath, cardFolderPath);
+var cards = CardDatabase.LoadOrUpdate(cardDataPath, cardFolderPath, background);
 Console.WriteLine($"  {cards.Length} cards ready in {sw.ElapsedMilliseconds}ms");
 Console.WriteLine();
 
 // Input image
 Console.WriteLine("Loading input image...");
 sw.Restart();
-using var inputImage = Image.Load<Rgb24>(inputPath);
+using var inputImageRaw = Image.Load<Rgba32>(inputPath);
 
 int mosaicWidth  = cardWidth * cardsPerRow;
-int mosaicHeight = (int)((double)mosaicWidth / inputImage.Width * inputImage.Height);
+int mosaicHeight = (int)((double)mosaicWidth / inputImageRaw.Width * inputImageRaw.Height);
 int cols         = mosaicWidth  / cardWidth;
 int rows         = mosaicHeight / cardHeight;
 
-Console.WriteLine($"  Source        : {inputImage.Width}x{inputImage.Height}px");
+Console.WriteLine($"  Source        : {inputImageRaw.Width}x{inputImageRaw.Height}px");
 Console.WriteLine($"  Mosaic size   : {mosaicWidth}x{mosaicHeight}px");
 Console.WriteLine($"  Grid          : {cols} cols x {rows} rows = {cols * rows} tiles");
 Console.WriteLine($"  ({sw.ElapsedMilliseconds}ms)");
 Console.WriteLine();
+
+// Per-tile opacity. Decides which tiles get left blank in the output.
+Console.WriteLine("Measuring tile transparency...");
+sw.Restart();
+float[] tileOpacity    = ImageIO.ExtractTileOpacity(inputImageRaw, cols, rows);
+float   minTileOpacity = 1f - transparencyThreshold / 100f;
+int     blankTiles     = tileOpacity.Count(o => o < minTileOpacity);
+Console.WriteLine($"  {blankTiles}/{cols * rows} tiles will be left blank ({sw.ElapsedMilliseconds}ms)");
+Console.WriteLine();
+
+using var inputImage = ImageIO.Flatten(inputImageRaw, background);
 
 // Matching
 int[] tileCardIndices;
@@ -169,7 +188,7 @@ if (patchMatch)
     sw.Restart();
     tileCardIndices = GpuPatchMatcher.Match(
         cards, inputImage, cardFolderPath,
-        cols, rows, matchWidth, matchHeight, matchCandidates, labSsd);
+        cols, rows, matchWidth, matchHeight, matchCandidates, labSsd, background);
     Console.WriteLine($"  Done in {sw.ElapsedMilliseconds}ms");
 }
 else
@@ -200,13 +219,18 @@ else
 
 Console.WriteLine();
 
+// Blank out tiles that are too transparent to bother placing a card on.
+for (int t = 0; t < tileCardIndices.Length; t++)
+    if (tileOpacity[t] < minTileOpacity)
+        tileCardIndices[t] = -1;
+
 // Composite and write output
 Console.WriteLine(deepZoom ? "Compositing and building Deep Zoom..." : "Compositing and saving PNG...");
 sw.Restart();
 
 var strips = CardCompositor.CompositeStrips(
     tileCardIndices, cards, cardFolderPath,
-    cols, rows, cardWidth, cardHeight, mosaicWidth);
+    cols, rows, cardWidth, cardHeight, mosaicWidth, background);
 
 if (deepZoom)
     DeepZoomWriter.Write(outputPath, mosaicWidth, mosaicHeight, strips);
