@@ -47,6 +47,7 @@ and the app. The first run compiles the Rust dependencies and takes a few minute
 | `scripts/build-sidecar.mjs` | Publishes the sidecar as one self-contained exe into `src-tauri/binaries/`, named with the platform's target triple as Tauri requires. |
 | `src-tauri/tauri.conf.json` | App config. `bundle.externalBin` lists the sidecar. |
 | `src-tauri/capabilities/default.json` | What the UI is allowed to do: spawn only the sidecar, open dialogs, and so on. |
+| `app-icon.svg` | Source for the app icon. After editing it, run `npm run icon` (`scripts/generate-icon.mjs`) to regenerate every size in `src-tauri/icons/`. |
 
 ## Notes
 

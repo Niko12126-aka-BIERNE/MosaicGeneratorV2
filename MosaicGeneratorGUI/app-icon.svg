@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Source for the app icon. Regenerate every size with: npm run icon -->
+  <!-- Dark rounded background (neutral-900, matching the app's dark theme). -->
+  <rect width="1024" height="1024" rx="200" fill="#171717"/>
+
+  <!-- 3x3 tiles. Each diagonal shares a colour, so together they read as a
+       blue-to-green gradient: a picture built from tiles. -->
+  <g>
+    <rect x="136" y="136" width="224" height="224" rx="40" fill="#2563eb"/>
+    <rect x="400" y="136" width="224" height="224" rx="40" fill="#0891b2"/>
+    <rect x="664" y="136" width="224" height="224" rx="40" fill="#14b8a6"/>
+
+    <rect x="136" y="400" width="224" height="224" rx="40" fill="#0891b2"/>
+    <rect x="400" y="400" width="224" height="224" rx="40" fill="#14b8a6"/>
+    <rect x="664" y="400" width="224" height="224" rx="40" fill="#10b981"/>
+
+    <rect x="136" y="664" width="224" height="224" rx="40" fill="#14b8a6"/>
+    <rect x="400" y="664" width="224" height="224" rx="40" fill="#10b981"/>
+    <rect x="664" y="664" width="224" height="224" rx="40" fill="#22c55e"/>
+  </g>
+</svg>

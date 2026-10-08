@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "sidecar": "node scripts/build-sidecar.mjs"
+    "sidecar": "node scripts/build-sidecar.mjs",
+    "icon": "node scripts/generate-icon.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
