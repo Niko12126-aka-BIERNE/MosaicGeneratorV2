@@ -24,7 +24,8 @@ the sidecar), `dialog` (native file pickers) and `opener` (opens the finished mo
 - [Node.js](https://nodejs.org/) and npm
 - [Rust](https://www.rust-lang.org/tools/install)
 - [.NET 8 SDK](https://dotnet.microsoft.com/download), to build the sidecar
-- An NVIDIA GPU with CUDA support, to generate mosaics
+- Optional: a GPU (NVIDIA via CUDA, or AMD/Intel via OpenCL) for faster matching. Without
+  one, the app runs the matching on the processor.
 
 ## Running
 

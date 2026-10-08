@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MosaicGenerator.Core;
+using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
 
 namespace MosaicGenerator.Sidecar;
@@ -37,7 +38,7 @@ public static class Handlers
     }
 
     private static SystemInfoResult SystemInfo() =>
-        new(GpuInfo.FindCudaDevices());
+        new(ComputeDevices.List());
 
     private static CardFolderInfoResult CardFolderInfo(PathRequest request)
     {

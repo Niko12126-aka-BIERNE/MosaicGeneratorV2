@@ -56,7 +56,8 @@ public static class MosaicJob
         try
         {
             var result = MosaicPipeline.Run(options, new EventProgress(), ct);
-            final = new DoneEvent(result.OutputPath, result.Layout, result.BlankTiles, result.Elapsed.TotalSeconds);
+            final = new DoneEvent(
+                result.OutputPath, result.Layout, result.BlankTiles, result.Elapsed.TotalSeconds, result.Device);
         }
         catch (OperationCanceledException)
         {

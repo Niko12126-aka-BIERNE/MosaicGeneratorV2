@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { JobState } from "../useJob";
 import type { MosaicStage } from "../sidecar/protocol";
+import { deviceLabel } from "../devices";
 
 const STAGES: { stage: MosaicStage; label: string }[] = [
   { stage: "loadingCards", label: "Loading cards" },
@@ -41,7 +42,7 @@ export function RunPanel(props: {
           <p className="font-medium text-emerald-900 dark:text-emerald-200">Your mosaic is ready</p>
           <p className="mb-3 text-sm text-emerald-800 dark:text-emerald-300">
             {job.layout.width.toLocaleString()} × {job.layout.height.toLocaleString()} px, made in{" "}
-            <span className="whitespace-nowrap">{formatDuration(job.elapsedSeconds)}</span>
+            <span className="whitespace-nowrap">{formatDuration(job.elapsedSeconds)}</span> on {deviceLabel(job.device)}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -109,7 +110,7 @@ function Progress(props: { job: Extract<JobState, { status: "running" }>; onCanc
       <div className="flex items-center justify-between">
         <span className="text-xs text-slate-500 dark:text-neutral-400">
           {job.fraction !== null ? `${Math.round(job.fraction * 100)}%` : ""}
-          {job.stage === "matching" && " The GPU part of this step can take a while."}
+          {job.stage === "matching" && " This step can take a while."}
         </span>
         <button
           type="button"

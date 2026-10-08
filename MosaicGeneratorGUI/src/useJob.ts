@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { sidecar } from "./sidecar/client";
-import type { JobEvent, MosaicLayout, MosaicOptions, MosaicStage } from "./sidecar/protocol";
+import type { DeviceInfo, JobEvent, MosaicLayout, MosaicOptions, MosaicStage } from "./sidecar/protocol";
 
 export type JobState =
   | { status: "idle" }
@@ -15,7 +15,7 @@ export type JobState =
       startedAt: number;
       cancelling: boolean;
     }
-  | { status: "done"; outputPath: string; layout: MosaicLayout; elapsedSeconds: number }
+  | { status: "done"; outputPath: string; layout: MosaicLayout; elapsedSeconds: number; device: DeviceInfo }
   | { status: "cancelled" }
   | { status: "failed"; error: string };
 
@@ -44,6 +44,7 @@ export function useJob() {
               outputPath: event.outputPath,
               layout: event.layout,
               elapsedSeconds: event.elapsedSeconds,
+              device: event.device,
             });
             break;
           case "cancelled":

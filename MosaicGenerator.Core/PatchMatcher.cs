@@ -1,38 +1,35 @@
-using ILGPU;
-using ILGPU.Algorithms;
-using ILGPU.Runtime;
-using ILGPU.Runtime.Cuda;
+using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
 namespace MosaicGenerator.Core;
 
-public static class GpuPatchMatcher
+public static class PatchMatcher
 {
     /// <summary>
     /// For every tile in <paramref name="inputImage"/> (which must already be resized to
     /// <c>cols * matchWidth</c> by <c>rows * matchHeight</c>), finds the card whose pixel
-    /// patch is the closest match using sum-of-squared-differences (SSD) in RGB space,
-    /// computed on the GPU.
+    /// patch is the closest match using sum-of-squared-differences (SSD), computed on the
+    /// device <paramref name="backend"/> represents.
     /// <para>
-    /// Before running full pixel SSD on the GPU, a cheap CPU pre-filter computes the average
-    /// LAB colour of each tile and each card, then selects the closest <paramref name="topK"/>
-    /// candidates per tile. Only those candidates are compared on the GPU, cutting GPU work
+    /// Before running full pixel SSD, a cheap pre-filter computes the average LAB colour of
+    /// each tile and each card, then selects the closest <paramref name="topK"/> candidates
+    /// per tile. Only those candidates are compared pixel by pixel, cutting the work
     /// dramatically while preserving match quality.
     /// </para>
     /// <para>
     /// Pixel values are stored as <c>float</c> in the [0, 1] range rather than raw bytes.
     /// This avoids any ambiguity in how ILGPU handles byte-to-int sign extension in kernels,
-    /// and matches the type convention used by <see cref="GpuCardMatcher"/>.
+    /// and matches the type convention used by <see cref="ColorMatcher"/>.
     /// </para>
     /// <para>
-    /// Progress: loading card images covers the first half of the reported fraction and the
-    /// pre-filter most of the rest. The GPU kernel itself can't be interrupted or measured,
-    /// so cancellation is checked before it starts.
+    /// Progress: loading card images covers the first 30% of the reported fraction, the
+    /// pre-filter the next 10%, and the pixel comparison the rest.
     /// </para>
     /// </summary>
     public static int[] Match(
+        IMatchBackend backend,
         CardRecord[] cards,
         Image<Rgb24> inputImage,
         string cardFolderPath,
@@ -61,11 +58,7 @@ public static class GpuPatchMatcher
                 $"Tile buffer too large ({tileElemCount * 4 / 1024 / 1024} MB). " +
                 $"Reduce --cards-per-row, --card-width, or lower --match-width.");
 
-        // Initialise GPU early so we can report the device name up front
-        using var context     = Context.Create(b => b.Cuda().EnableAlgorithms());
-        using var accelerator = context.CreateCudaAccelerator(0);
-
-        progress?.Log($"  GPU              : {accelerator.Name}");
+        progress?.Log($"  Device           : {backend.Device}");
         progress?.Log($"  Match resolution : {matchWidth}×{matchHeight}px per tile");
         progress?.Log($"  Candidates       : top {effectiveK} of {cards.Length} cards per tile");
         progress?.Log($"  Pixel metric     : {(labSsd ? "LAB SSD (perceptually uniform)" : "RGB SSD")}");
@@ -87,10 +80,15 @@ public static class GpuPatchMatcher
             tileFloats, cards, tileCount, matchPixels3, effectiveK, labSsd, progress, ct);
         progress?.Log("  Pre-filter done.");
 
-        // GPU: one thread per tile, SSD only against its K candidates
-        return RunGpuMatch(
-            accelerator, cardFloats, tileFloats, candidateIndices, tileCount, matchPixels3, effectiveK,
-            progress, ct);
+        // Pixel comparison: per tile, SSD only against its K candidates
+        progress?.Log($"  Matching {tileCount} tiles × {effectiveK} candidates — this may take a while...");
+        int[] result = backend.MatchPatches(
+            cardFloats, tileFloats, candidateIndices, tileCount, effectiveK, matchPixels3,
+            fraction => progress?.Fraction(0.4 + 0.6 * fraction), ct);
+        progress?.Log("  Done.");
+        progress?.Fraction(1);
+
+        return result;
     }
 
     // Card loading
@@ -138,7 +136,7 @@ public static class GpuPatchMatcher
                 });
 
                 int n = Interlocked.Increment(ref done);
-                progress?.Fraction(0.5 * n / cards.Length);
+                progress?.Fraction(0.3 * n / cards.Length);
                 if (n % 1000 == 0 || n == cards.Length)
                     progress?.Log($"    Loaded {n}/{cards.Length} card images...");
             });
@@ -281,87 +279,9 @@ public static class GpuPatchMatcher
             // Reset the index buffer for the next tile this thread will process.
             for (int c = 0; c < cardCount; c++) idxs[c] = c;
 
-            progress?.Fraction(0.5 + 0.4 * Interlocked.Increment(ref done) / tileCount);
+            progress?.Fraction(0.3 + 0.1 * Interlocked.Increment(ref done) / tileCount);
         });
 
         return candidateIndices;
-    }
-
-    // GPU dispatch
-    private static int[] RunGpuMatch(
-        CudaAccelerator accelerator,
-        float[] cardFloats, float[] tileFloats,
-        int[] candidateIndices,
-        int tileCount, int matchPixels3, int K,
-        ProgressReporter? progress, CancellationToken ct)
-    {
-        using var deviceCards      = accelerator.Allocate1D<float>(cardFloats.Length);
-        using var deviceTiles      = accelerator.Allocate1D<float>(tileFloats.Length);
-        using var deviceCandidates = accelerator.Allocate1D<int>(candidateIndices.Length);
-        using var deviceResults    = accelerator.Allocate1D<int>(tileCount);
-
-        deviceCards.CopyFromCPU(cardFloats);
-        deviceTiles.CopyFromCPU(tileFloats);
-        deviceCandidates.CopyFromCPU(candidateIndices);
-
-        // JIT-compilation happens here. Can take 15–30 seconds on the first run of the session.
-        progress?.Log("  Compiling GPU kernel (first run may take ~30s)...");
-        var kernel = accelerator.LoadAutoGroupedStreamKernel<
-            Index1D,
-            ArrayView1D<float, Stride1D.Dense>,
-            ArrayView1D<float, Stride1D.Dense>,
-            ArrayView1D<int,   Stride1D.Dense>,
-            ArrayView1D<int,   Stride1D.Dense>,
-            int, int>(MatchKernel);
-
-        ct.ThrowIfCancellationRequested();
-        progress?.Log($"  Matching {tileCount} tiles × {K} candidates — this may take a while...");
-        kernel(tileCount, deviceCards.View, deviceTiles.View, deviceCandidates.View, deviceResults.View, K, matchPixels3);
-        accelerator.Synchronize();
-        progress?.Log("  Done.");
-        progress?.Fraction(1);
-
-        return deviceResults.GetAsArray1D();
-    }
-
-    // GPU kernel
-    // One thread per tile. Iterates only the K pre-selected candidate cards for this tile,
-    // accumulates float RGB SSD, and keeps the minimum.
-    private static void MatchKernel(
-        Index1D                            index,
-        ArrayView1D<float, Stride1D.Dense> cardPixels,
-        ArrayView1D<float, Stride1D.Dense> tilePixels,
-        ArrayView1D<int,   Stride1D.Dense> candidates,
-        ArrayView1D<int,   Stride1D.Dense> results,
-        int K,
-        int matchPixels3)
-    {
-        int ti            = index.X;
-        int tileBase      = ti * matchPixels3;
-        int candidateBase = ti * K;
-
-        int   bestCard = candidates[candidateBase];
-        float bestDist = float.MaxValue;
-
-        for (int k = 0; k < K; k++)
-        {
-            int   c        = candidates[candidateBase + k];
-            int   cardBase = c * matchPixels3;
-            float dist     = 0f;
-
-            for (int p = 0; p < matchPixels3; p++)
-            {
-                float diff = tilePixels[tileBase + p] - cardPixels[cardBase + p];
-                dist += diff * diff;
-            }
-
-            if (dist < bestDist)
-            {
-                bestDist = dist;
-                bestCard = c;
-            }
-        }
-
-        results[ti] = bestCard;
     }
 }

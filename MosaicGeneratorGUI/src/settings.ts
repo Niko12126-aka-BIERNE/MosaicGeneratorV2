@@ -13,6 +13,8 @@ export interface Settings {
   /** "#rrggbb", as used by <input type="color">. */
   backgroundColor: string;
   transparencyThreshold: number;
+  /** "auto" or a device id. Falls back to "auto" if that device isn't there anymore. */
+  device: string;
 }
 
 /** Same defaults as the engine (MosaicOptions.cs). */
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   labSsd: false,
   backgroundColor: "#000000",
   transparencyThreshold: 70,
+  device: "auto",
 };
 
 const STORAGE_KEY = "mosaic-generator.settings.v1";

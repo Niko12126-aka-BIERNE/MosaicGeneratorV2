@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -7,13 +8,15 @@ namespace MosaicGenerator.Core;
 
 /// <summary>What a finished run produced.</summary>
 /// <param name="OutputPath">The PNG file, or the Deep Zoom viewer's index.html.</param>
-public sealed record MosaicResult(string OutputPath, MosaicLayout Layout, int BlankTiles, TimeSpan Elapsed);
+/// <param name="Device">The device matching actually ran on (the processor if a GPU failed).</param>
+public sealed record MosaicResult(
+    string OutputPath, MosaicLayout Layout, int BlankTiles, TimeSpan Elapsed, DeviceInfo Device);
 
 public static class MosaicPipeline
 {
     /// <summary>
-    /// Builds a mosaic from start to finish: card database, input analysis, GPU matching,
-    /// compositing and writing the output.
+    /// Builds a mosaic from start to finish: card database, input analysis, matching on the
+    /// chosen device (see <see cref="MosaicOptions.Device"/>), compositing and writing the output.
     /// <para>
     /// Blocks until done, so UI callers should run it on a background thread. Progress goes to
     /// <paramref name="progress"/> as it happens. Use a synchronous <see cref="IProgress{T}"/>
@@ -21,7 +24,7 @@ public static class MosaicPipeline
     /// </para>
     /// <para>
     /// Throws <see cref="OperationCanceledException"/> when <paramref name="ct"/> is cancelled.
-    /// The GPU kernels can't be interrupted, so cancelling during matching takes effect once
+    /// GPU kernels can't be interrupted, so cancelling during GPU matching takes effect once
     /// the kernel finishes. If writing the output fails or is cancelled, partial output is
     /// removed (a Deep Zoom folder only if this run created it).
     /// </para>
@@ -53,15 +56,16 @@ public static class MosaicPipeline
         report.Log($"  Card width    : {options.CardWidth}px");
         report.Log($"  Match mode    : {(options.PatchMatch ? $"Patch match ({(options.LabSsd ? "LAB" : "RGB")} SSD, {options.MatchWidth}px wide, top {options.MatchCandidates} candidates)" : "Colour match (CIEDE2000)")}");
         report.Log($"  Output mode   : {(options.DeepZoom ? "Deep Zoom" : "PNG")}");
+        report.Log($"  Device        : {options.Device}");
         report.Log($"  Background    : #{background.ToHex()[..6]} (used to flatten transparency for matching)");
         report.Log($"  Transparency  : tiles below {100 - options.TransparencyThreshold}% opaque are left blank in the output");
         report.Log("");
 
-        // Fail fast, before the card database spends minutes on a machine that can't match.
-        if (GpuInfo.FindCudaDevices().Count == 0)
-            throw new InvalidOperationException(
-                "No NVIDIA GPU with CUDA support was found. The mosaic generator needs one for matching. " +
-                "If you have one, make sure its drivers are up to date.");
+        // Open the device first, so a device chosen by hand that can't start fails straight
+        // away, not after the card database has spent minutes on new cards.
+        using var backend = ComputeDevices.Open(options.Device, report);
+        report.Log($"Compute device: {backend.Device}");
+        report.Log("");
 
         // ── Stage: loading cards ─────────────────────────────────────────────
         ct.ThrowIfCancellationRequested();
@@ -167,20 +171,19 @@ public static class MosaicPipeline
 
         if (options.PatchMatch)
         {
-            report.Log("Running GPU patch matching...");
+            report.Log("Running patch matching...");
             sw.Restart();
-            tileCardIndices = GpuPatchMatcher.Match(
-                cards, inputImage, cardFolderPath,
+            tileCardIndices = PatchMatcher.Match(
+                backend, cards, inputImage, cardFolderPath,
                 cols, rows, matchWidth, matchHeight, options.MatchCandidates, options.LabSsd, background,
                 report, ct);
             report.Log($"  Done in {sw.ElapsedMilliseconds}ms");
         }
         else
         {
-            report.Log("Running GPU colour matching...");
-            report.Log("  (First run compiles the CUDA kernel — may take a few seconds)");
+            report.Log("Running colour matching...");
             sw.Restart();
-            tileCardIndices = GpuCardMatcher.Match(cards, tileColors, layout.TileCount, report, ct);
+            tileCardIndices = ColorMatcher.Match(backend, cards, tileColors, layout.TileCount, report, ct);
             report.Log($"  Done in {sw.ElapsedMilliseconds}ms");
         }
 
@@ -223,7 +226,7 @@ public static class MosaicPipeline
         report.Log("");
         report.Log($"Total time: {totalTimer.Elapsed.TotalSeconds:F1}s");
 
-        return new MosaicResult(resultPath, layout, blankTiles, totalTimer.Elapsed);
+        return new MosaicResult(resultPath, layout, blankTiles, totalTimer.Elapsed, backend.Device);
     }
 
     private static void RemovePartialOutput(

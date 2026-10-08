@@ -1,9 +1,22 @@
 using MosaicGenerator.Core;
+using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
+
+if (args is ["--list-devices"])
+{
+    Console.WriteLine("Devices that can run the matching, best first:");
+    foreach (var info in ComputeDevices.List())
+        Console.WriteLine($"  {info.Id,-10} {info}");
+    Console.WriteLine();
+    Console.WriteLine("Choose one with --device <id>. The default, --device auto, uses the first one");
+    Console.WriteLine("and falls back to the processor if a GPU fails.");
+    return;
+}
 
 if (args.Length < 2)
 {
     Console.WriteLine("Usage: MosaicGeneratorCLI <input-image> <card-folder> [output] [options]");
+    Console.WriteLine("       MosaicGeneratorCLI --list-devices");
     Console.WriteLine();
     Console.WriteLine("Arguments:");
     Console.WriteLine("  <input-image>          Path to the source image");
@@ -24,6 +37,7 @@ if (args.Length < 2)
     Console.WriteLine("  --deep-zoom            Generate Deep Zoom tiles + HTML viewer instead of PNG (great for large images, that would be too large for a single PNG)");
     Console.WriteLine("  --background-color <hex>  Background to flatten transparent pixels onto, e.g. FFFFFF (default: black)");
     Console.WriteLine("  --transparency-threshold <pct>  Tiles more transparent than this are left blank in the output (default: 70)");
+    Console.WriteLine("  --device <id>          Device for matching: auto, cuda, opencl, cpu, or an id from --list-devices (default: auto)");
     return;
 }
 
@@ -39,6 +53,7 @@ bool labSsd           = false;
 bool deepZoom         = false;
 Color background      = Color.Black;
 int transparencyThreshold = 70;
+string device         = ComputeDevices.Auto;
 
 // args[2] is the optional output path only if it doesn't look like a flag
 int optStart = 2;
@@ -61,6 +76,7 @@ for (int i = optStart; i < args.Length; i++)
         case "--deep-zoom":         deepZoom        = true;                 break;
         case "--background-color": background      = ImageIO.ParseBackgroundColor(args[++i]); break;
         case "--transparency-threshold": transparencyThreshold = int.Parse(args[++i]); break;
+        case "--device":            device          = args[++i];            break;
     }
 }
 
@@ -113,6 +129,7 @@ var options = new MosaicOptions
     DeepZoom              = deepZoom,
     Background            = background,
     TransparencyThreshold = transparencyThreshold,
+    Device                = device,
 };
 
 // First Ctrl+C asks the engine to stop cleanly (and remove partial output).

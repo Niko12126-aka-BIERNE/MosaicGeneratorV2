@@ -55,7 +55,7 @@ every request with exactly one `response` carrying the same `id`.
 
 | `type` | Fields | `result` on success |
 |--------|--------|---------------------|
-| `systemInfo` | none | `{ "cudaDevices": ["NVIDIA GeForce RTX 3080 Ti"] }` (empty when there's no CUDA GPU) |
+| `systemInfo` | none | `{ "devices": [{ "id": "cuda:0", "name": "NVIDIA GeForce RTX 3080 Ti", "kind": "cuda", "kindName": "CUDA", "memoryBytes": 12884377600 }, ...] }`: every device that can run matching, best first. The processor (`"id": "cpu"`) is always there, last. |
 | `cardFolderInfo` | `path` | `{ "imageCount": 4812, "aspectRatio": 1.3968, "hasCache": true }` (`aspectRatio` is card height / width, left out when the folder has no images; `hasCache` means the folder has been used before) |
 | `imageInfo` | `path` | `{ "width": 4000, "height": 3000 }` |
 | `layout` | `inputWidth`, `inputHeight`, `cardsPerRow`, `cardWidth`, `cardAspectRatio` | `{ "cols", "rows", "cardWidth", "cardHeight", "width", "height", "tileCount", "pixelCount" }` |
@@ -80,7 +80,8 @@ every request with exactly one `response` carrying the same `id`.
   "labSsd": false,
   "deepZoom": false,
   "backgroundColor": "000000",
-  "transparencyThreshold": 70
+  "transparencyThreshold": 70,
+  "device": "auto"
 }
 ```
 
@@ -93,7 +94,7 @@ every request with exactly one `response` carrying the same `id`.
 | `stage` | `stage` | A job entered a new stage: `loadingCards`, `analysingImage`, `matching` or `writingOutput`. Its progress isn't known yet. |
 | `progress` | `stage`, `fraction` | How far the current stage is, from 0 to 1. At most once per whole percent. |
 | `log` | `text` | A log line, the same text the CLI prints. |
-| `done` | `outputPath`, `layout`, `blankTiles`, `elapsedSeconds` | The job finished. `outputPath` is the PNG, or the Deep Zoom `index.html`. |
+| `done` | `outputPath`, `layout`, `blankTiles`, `elapsedSeconds`, `device` | The job finished. `outputPath` is the PNG, or the Deep Zoom `index.html`. `device` is what matching actually ran on: the processor, if a GPU failed in automatic mode. |
 | `cancelled` | none | The job stopped after a `cancel`. Partial output has been removed. |
 | `failed` | `error` | The job failed. |
 

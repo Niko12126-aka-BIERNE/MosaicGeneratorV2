@@ -17,6 +17,8 @@ export interface MosaicOptions {
   /** Hex colour like "FFFFFF" or "#FFFFFF". */
   backgroundColor?: string;
   transparencyThreshold?: number;
+  /** "auto", or an `id` from SystemInfo.devices. */
+  device?: string;
 }
 
 export interface MosaicLayout {
@@ -30,13 +32,24 @@ export interface MosaicLayout {
   pixelCount: number;
 }
 
+/** A device that can run the matching. */
+export interface DeviceInfo {
+  /** e.g. "cuda:0", "opencl:1" or "cpu". */
+  id: string;
+  name: string;
+  kind: "cuda" | "openCL" | "cpu";
+  /** "CUDA", "OpenCL" or "CPU", for display. */
+  kindName: string;
+  memoryBytes: number;
+}
+
 export type MosaicStage = "loadingCards" | "analysingImage" | "matching" | "writingOutput";
 
 // Results
 
 export interface SystemInfo {
-  /** Empty when there's no CUDA-capable GPU. */
-  cudaDevices: string[];
+  /** Every device that can run matching, best first. The processor ("cpu") is always last. */
+  devices: DeviceInfo[];
 }
 
 export interface CardFolderInfo {
@@ -100,7 +113,15 @@ export type JobEvent =
   | { type: "stage"; stage: MosaicStage }
   | { type: "progress"; stage: MosaicStage; fraction: number }
   | { type: "log"; text: string }
-  | { type: "done"; outputPath: string; layout: MosaicLayout; blankTiles: number; elapsedSeconds: number }
+  | {
+      type: "done";
+      outputPath: string;
+      layout: MosaicLayout;
+      blankTiles: number;
+      elapsedSeconds: number;
+      /** What matching actually ran on: the processor if a GPU failed in automatic mode. */
+      device: DeviceInfo;
+    }
   | { type: "cancelled" }
   | { type: "failed"; error: string };
 

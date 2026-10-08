@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MosaicGenerator.Core;
+using MosaicGenerator.Core.Compute;
 
 namespace MosaicGenerator.Sidecar;
 
@@ -10,7 +11,7 @@ namespace MosaicGenerator.Sidecar;
 public static class Protocol
 {
     /// <summary>Bumped when messages change in a way the app needs to know about.</summary>
-    public const int Version = 1;
+    public const int Version = 2;   // 2: compute devices (systemInfo, options.device, done.device)
 
     /// <summary>camelCase names, enums as camelCase strings, nulls left out.</summary>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -37,7 +38,8 @@ public sealed record OutputExistsRequest(string? OutputPath, bool DeepZoom);
 
 /// <summary>
 /// Mosaic settings as the app sends them. Anything left out gets the engine's default.
-/// The background colour is a hex string like "FFFFFF" or "#FFFFFF".
+/// The background colour is a hex string like "FFFFFF" or "#FFFFFF". The device is "auto"
+/// or an id from systemInfo's device list.
 /// </summary>
 public sealed record OptionsDto(
     string? InputPath,
@@ -51,7 +53,8 @@ public sealed record OptionsDto(
     bool?   LabSsd,
     bool?   DeepZoom,
     string? BackgroundColor,
-    int?    TransparencyThreshold)
+    int?    TransparencyThreshold,
+    string? Device)
 {
     private static readonly MosaicOptions Defaults =
         new() { InputPath = "", CardFolderPath = "", OutputPath = "" };
@@ -84,6 +87,7 @@ public sealed record OptionsDto(
             DeepZoom              = DeepZoom              ?? Defaults.DeepZoom,
             Background            = background,
             TransparencyThreshold = TransparencyThreshold ?? Defaults.TransparencyThreshold,
+            Device                = string.IsNullOrWhiteSpace(Device) ? Defaults.Device : Device,
         };
     }
 }
@@ -106,13 +110,16 @@ public sealed record Response(int? Id, bool Ok, object? Result, string? Error) :
 public sealed record StageEvent(MosaicStage Stage) : Message("stage");
 public sealed record ProgressEvent(MosaicStage Stage, double Fraction) : Message("progress");
 public sealed record LogEvent(string Text) : Message("log");
-public sealed record DoneEvent(string OutputPath, MosaicLayout Layout, int BlankTiles, double ElapsedSeconds) : Message("done");
+/// <param name="Device">The device matching actually ran on (the processor if a GPU failed).</param>
+public sealed record DoneEvent(
+    string OutputPath, MosaicLayout Layout, int BlankTiles, double ElapsedSeconds, DeviceInfo Device) : Message("done");
 public sealed record CancelledEvent() : Message("cancelled");
 public sealed record FailedEvent(string Error) : Message("failed");
 
 // ── Results (the "result" field of a successful response) ───────────────────
 
-public sealed record SystemInfoResult(IReadOnlyList<string> CudaDevices);
+/// <param name="Devices">Every device that can run matching, best first. The processor is always last.</param>
+public sealed record SystemInfoResult(IReadOnlyList<DeviceInfo> Devices);
 
 /// <param name="AspectRatio">Card height / width, or null when the folder has no images.</param>
 /// <param name="HasCache">Whether allCardLabData.json exists, i.e. this folder was used before.</param>

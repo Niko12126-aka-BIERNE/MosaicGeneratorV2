@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { sidecar } from "./sidecar/client";
-import type { CardFolderInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
+import type { CardFolderInfo, DeviceInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./settings";
 import { convertOutputPath, suggestOutputPath } from "./paths";
 import { useJob } from "./useJob";
 import { applyTheme, loadTheme, type Theme } from "./theme";
+import { deviceLabel } from "./devices";
 import { ChoiceGroup, FieldLabel, NumberField, PathField, Section } from "./components/ui";
 import { LogPanel, RunPanel } from "./components/RunPanel";
 
@@ -23,8 +24,7 @@ type Loadable<T> =
 
 type Engine =
   | { state: "starting" }
-  | { state: "ready"; gpu: string }
-  | { state: "noGpu" }
+  | { state: "ready"; devices: DeviceInfo[] }
   | { state: "error"; message: string };
 
 export default function App() {
@@ -43,6 +43,13 @@ export default function App() {
   const job = useJob();
   const running = job.state.status === "running";
 
+  // Devices come best first, so in automatic mode the first one is used. A remembered device
+  // that isn't there anymore (e.g. a removed graphics card) also means automatic.
+  const devices = engine.state === "ready" ? engine.devices : [];
+  const chosenDevice = devices.find((d) => d.id === settings.device);
+  const deviceSetting = chosenDevice ? chosenDevice.id : "auto";
+  const activeDevice: DeviceInfo | undefined = chosenDevice ?? devices[0];
+
   const image = useSidecarInfo(settings.inputPath, (path) => sidecar.request("imageInfo", { path }));
   const cards = useSidecarInfo(settings.cardFolderPath, (path) => sidecar.request("cardFolderInfo", { path }));
   const layout = useLayout(image, cards, settings.cardsPerRow, settings.cardWidth);
@@ -50,13 +57,11 @@ export default function App() {
   const outputKey = outputPath && JSON.stringify({ outputPath, deepZoom: settings.deepZoom, run: job.state.status });
   const outputStatus = useSidecarInfo(outputKey, (key) => sidecar.request("outputExists", JSON.parse(key)));
 
-  // Check the engine and GPU once at startup.
+  // Start the engine and find out which devices can run the matching.
   useEffect(() => {
     sidecar
       .request("systemInfo")
-      .then(({ cudaDevices }) =>
-        setEngine(cudaDevices.length > 0 ? { state: "ready", gpu: cudaDevices[0] } : { state: "noGpu" }),
-      )
+      .then(({ devices }) => setEngine({ state: "ready", devices }))
       .catch((error: Error) => setEngine({ state: "error", message: error.message }));
   }, []);
 
@@ -121,6 +126,7 @@ export default function App() {
       deepZoom: settings.deepZoom,
       backgroundColor: settings.backgroundColor,
       transparencyThreshold: settings.transparencyThreshold,
+      device: deviceSetting,
     };
     await job.start(options);
   }
@@ -130,7 +136,6 @@ export default function App() {
   function findBlocker(): string | null {
     if (engine.state === "starting") return "Starting the mosaic engine…";
     if (engine.state === "error") return engine.message;
-    if (engine.state === "noGpu") return "Generating mosaics needs an NVIDIA graphics card with CUDA support.";
     if (!settings.inputPath) return "Choose a source image to begin.";
     if (image.state === "error") return "The source image can't be read.";
     if (!settings.cardFolderPath) return "Choose your card folder.";
@@ -151,7 +156,7 @@ export default function App() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <h1 className="text-xl font-semibold text-slate-900 dark:text-neutral-100">Mosaic Generator</h1>
           <div className="flex min-w-0 items-center gap-2">
-            <EngineBadge engine={engine} />
+            <EngineBadge engine={engine} device={activeDevice} automatic={deviceSetting === "auto"} />
             <ThemeToggle theme={theme} onChange={setTheme} />
           </div>
         </div>
@@ -204,6 +209,11 @@ export default function App() {
                   { value: "detail", title: "Detail match", description: "Slower. Compares what's in each card, so edges and shapes follow the image better." },
                 ]}
               />
+              {settings.patchMatch && activeDevice?.kind === "cpu" && (
+                <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+                  Detail match will run on the processor, which can be much slower than on a graphics card.
+                </p>
+              )}
             </div>
 
             <div>
@@ -233,7 +243,7 @@ export default function App() {
               }
             />
 
-            <AdvancedSettings settings={settings} update={update} />
+            <AdvancedSettings settings={settings} update={update} devices={devices} deviceSetting={deviceSetting} />
           </Section>
         </fieldset>
 
@@ -286,17 +296,23 @@ function ThemeToggle({ theme, onChange }: { theme: Theme; onChange: (theme: Them
   );
 }
 
-function EngineBadge({ engine }: { engine: Engine }) {
+/** Shows which device will run the matching: green for a graphics card, amber for the processor. */
+function EngineBadge(props: { engine: Engine; device: DeviceInfo | undefined; automatic: boolean }) {
+  const { engine, device } = props;
   const [dot, text] =
-    engine.state === "starting" ? ["bg-slate-400", "Starting engine…"]
-    : engine.state === "ready" ? ["bg-emerald-500", engine.gpu]
-    : engine.state === "noGpu" ? ["bg-red-500", "No NVIDIA GPU found"]
-    : ["bg-red-500", "Engine error"];
+    engine.state === "starting" || !device ? ["bg-slate-400", "Starting engine…"]
+    : engine.state === "error" ? ["bg-red-500", "Engine error"]
+    : [device.kind === "cpu" ? "bg-amber-500" : "bg-emerald-500", deviceLabel(device)];
+
+  const tooltip =
+    engine.state === "error" ? engine.message
+    : device ? `Matching runs on ${deviceLabel(device)}. ${props.automatic ? "Chosen automatically" : "Chosen in Advanced settings"}.`
+    : undefined;
 
   return (
     <div
       className="flex min-w-0 items-center gap-2 rounded-full border border-slate-200 dark:border-neutral-800 px-3 py-1 text-sm text-slate-600 dark:text-neutral-400"
-      title={engine.state === "error" ? engine.message : undefined}
+      title={tooltip}
     >
       <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
       <span className="truncate">{text}</span>
@@ -341,18 +357,42 @@ function SizeSummary({ layout, deepZoom }: { layout: Loadable<MosaicLayout>; dee
   );
 }
 
-function AdvancedSettings(props: { settings: Settings; update: (changes: Partial<Settings>) => void }) {
-  const { settings, update } = props;
+function AdvancedSettings(props: {
+  settings: Settings;
+  update: (changes: Partial<Settings>) => void;
+  devices: DeviceInfo[];
+  /** "auto" or the id of a device in `devices`. */
+  deviceSetting: string;
+}) {
+  const { settings, update, devices } = props;
   return (
     <details className="group rounded-lg border border-slate-200 dark:border-neutral-800">
       <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-700 dark:text-neutral-300">
         Advanced settings
       </summary>
       <div className="space-y-5 border-t border-slate-200 dark:border-neutral-800 px-3 py-4">
+        <div>
+          <FieldLabel hint="Automatic picks the fastest one available, and switches to the processor if the graphics card runs into a problem.">
+            Run matching on
+          </FieldLabel>
+          <select
+            value={props.deviceSetting}
+            onChange={(e) => update({ device: e.target.value })}
+            className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          >
+            <option value="auto">Automatic{devices[0] ? ` (${deviceLabel(devices[0])})` : ""}</option>
+            {devices.map((device) => (
+              <option key={device.id} value={device.id}>
+                {deviceLabel(device)}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {settings.patchMatch && (
           <>
             <div>
-              <FieldLabel hint="Size each card is compared at. Higher catches finer detail, but uses more GPU memory and time.">
+              <FieldLabel hint="Size each card is compared at. Higher catches finer detail, but uses more memory and time.">
                 Detail resolution
               </FieldLabel>
               <NumberField value={settings.matchWidth} min={1} max={1024} suffix="px" onChange={(matchWidth) => update({ matchWidth })} />
@@ -416,6 +456,7 @@ function AdvancedSettings(props: { settings: Settings; update: (changes: Partial
               labSsd: DEFAULT_SETTINGS.labSsd,
               backgroundColor: DEFAULT_SETTINGS.backgroundColor,
               transparencyThreshold: DEFAULT_SETTINGS.transparencyThreshold,
+              device: DEFAULT_SETTINGS.device,
             })
           }
           className="text-sm text-indigo-700 dark:text-indigo-300 hover:underline"

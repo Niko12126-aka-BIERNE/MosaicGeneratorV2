@@ -9,7 +9,7 @@ import { Command, type Child } from "@tauri-apps/plugin-shell";
 import type { JobEvent, RequestType, Requests, SidecarMessage } from "./protocol";
 
 /** The protocol version this frontend was written for (Protocol.Version in the sidecar). */
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 type Pending = { resolve: (result: unknown) => void; reject: (error: Error) => void };
 

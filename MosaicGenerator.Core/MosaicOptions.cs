@@ -1,3 +1,4 @@
+using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
 
 namespace MosaicGenerator.Core;
@@ -26,6 +27,12 @@ public sealed record MosaicOptions
 
     /// <summary>Tiles more transparent than this percentage are left blank in the output.</summary>
     public int TransparencyThreshold { get; init; } = 70;
+
+    /// <summary>
+    /// Which device runs the matching: "auto" (the best one, falling back to the processor if a
+    /// GPU fails), "cuda", "opencl", "cpu", or an exact id. See <see cref="ComputeDevices.Open"/>.
+    /// </summary>
+    public string Device { get; init; } = ComputeDevices.Auto;
 
     /// <summary>
     /// Checks the options for mistakes that can be caught before starting a run.
@@ -63,6 +70,9 @@ public sealed record MosaicOptions
 
         if (TransparencyThreshold is < 0 or > 100)
             errors.Add("Transparency threshold must be between 0 and 100.");
+
+        if (string.IsNullOrWhiteSpace(Device))
+            errors.Add("No device selected.");
 
         return errors;
     }
