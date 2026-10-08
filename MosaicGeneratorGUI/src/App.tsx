@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { dirname } from "@tauri-apps/api/path";
 import { sidecar } from "./sidecar/client";
 import type { CardFolderInfo, DeviceInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./settings";
 import { convertOutputPath, IMAGE_EXTENSIONS, suggestOutputPath } from "./paths";
+import { lastFolder, rememberFolder } from "./pickerFolders";
 import { useJob } from "./useJob";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 import { deviceLabel } from "./devices";
@@ -76,12 +78,20 @@ export default function App() {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async function pickInput() {
-    const path = await open({ title: "Choose the source image", filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] });
+    const path = await open({
+      title: "Choose the source image",
+      defaultPath: lastFolder("input"),
+      filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }],
+    });
     if (path) await chooseInput(path);
   }
 
   async function pickCardFolder() {
-    const path = await open({ title: "Choose the folder with your card images", directory: true });
+    const path = await open({
+      title: "Choose the folder with your card images",
+      defaultPath: lastFolder("cardFolder") ?? settings.cardFolderPath ?? undefined,
+      directory: true,
+    });
     if (path) chooseCardFolder(path);
   }
 
@@ -95,21 +105,25 @@ export default function App() {
   // Shared by the pickers and drag-and-drop.
   async function chooseInput(path: string) {
     update({ inputPath: path });
-    setOutputPath(await suggestOutputPath(path, settings.deepZoom));
+    rememberFolder("input", await dirname(path));
+    // Named after the image, but saved where the last mosaic went (next to the image the first time).
+    setOutputPath(await suggestOutputPath(path, settings.deepZoom, lastFolder("output")));
     setOutputConfirmed(false);
   }
 
   function chooseCardFolder(path: string) {
     update({ cardFolderPath: path });
+    rememberFolder("cardFolder", path);
   }
 
   async function pickOutput() {
     const path = await save({
       title: settings.deepZoom ? "Choose a name for the mosaic folder" : "Save the mosaic as",
-      defaultPath: outputPath ?? undefined,
+      defaultPath: outputPath ?? lastFolder("output"),
       filters: settings.deepZoom ? undefined : [{ name: "PNG image", extensions: ["png"] }],
     });
     if (!path) return;
+    rememberFolder("output", await dirname(path));
     setOutputPath(settings.deepZoom ? convertOutputPath(path, true) : path);
     setOutputConfirmed(!settings.deepZoom);
   }

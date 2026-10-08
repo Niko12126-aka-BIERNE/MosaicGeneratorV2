@@ -10,11 +10,13 @@ export function isImagePath(path: string): boolean {
 }
 
 /**
- * Suggests "<input name>_Mosaic.png" (or a "<input name>_Mosaic" folder for Deep Zoom) next to
- * the input image, numbered "_Mosaic1", "_Mosaic2"... if taken, like the CLI.
+ * Suggests "<input name>_Mosaic.png" (or a "<input name>_Mosaic" folder for Deep Zoom),
+ * numbered "_Mosaic1", "_Mosaic2"... if taken, like the CLI. It goes in `preferredFolder`
+ * (the last folder a mosaic was saved to) if that still exists, otherwise next to the input image.
  */
-export async function suggestOutputPath(inputPath: string, deepZoom: boolean): Promise<string> {
-  const dir  = await dirname(inputPath);
+export async function suggestOutputPath(inputPath: string, deepZoom: boolean, preferredFolder?: string): Promise<string> {
+  const usePreferred = preferredFolder && (await sidecar.request("pathKind", { path: preferredFolder })).kind === "folder";
+  const dir  = usePreferred ? preferredFolder : await dirname(inputPath);
   const stem = (await basename(inputPath)).replace(/\.[^.]+$/, "") + "_Mosaic";
   const ext  = deepZoom ? "" : ".png";
 
