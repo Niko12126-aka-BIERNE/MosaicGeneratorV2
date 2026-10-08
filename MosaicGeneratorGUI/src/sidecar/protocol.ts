@@ -85,6 +85,7 @@ export interface Requests {
     /** `path` is what would be written: the PNG file, or the Deep Zoom folder. */
     result: { exists: boolean; path: string };
   };
+  pathKind: { params: { path: string }; result: { kind: "file" | "folder" | "missing" } };
   validate: { params: { options: MosaicOptions }; result: { errors: string[] } };
   start:    { params: { options: MosaicOptions }; result: undefined };
   cancel:   { params: Record<string, never>; result: { wasRunning: boolean } };

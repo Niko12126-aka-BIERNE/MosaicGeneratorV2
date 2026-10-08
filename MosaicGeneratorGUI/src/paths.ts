@@ -1,6 +1,14 @@
 import { basename, dirname, join } from "@tauri-apps/api/path";
 import { sidecar } from "./sidecar/client";
 
+/** Image types the engine can read, as file extensions. */
+export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+
+export function isImagePath(path: string): boolean {
+  const extension = path.match(/\.([^.\\/]+)$/)?.[1]?.toLowerCase();
+  return extension !== undefined && IMAGE_EXTENSIONS.includes(extension);
+}
+
 /**
  * Suggests "<input name>_Mosaic.png" (or a "<input name>_Mosaic" folder for Deep Zoom) next to
  * the input image, numbered "_Mosaic1", "_Mosaic2"... if taken, like the CLI.

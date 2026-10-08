@@ -132,4 +132,7 @@ public sealed record ValidateResult(IReadOnlyList<string> Errors);
 /// <param name="Path">What would be written: the PNG file, or the Deep Zoom folder.</param>
 public sealed record OutputExistsResult(bool Exists, string Path);
 
+/// <param name="Kind">"file", "folder" or "missing".</param>
+public sealed record PathKindResult(string Kind);
+
 public sealed record CancelResult(bool WasRunning);

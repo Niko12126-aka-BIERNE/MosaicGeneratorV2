@@ -21,6 +21,7 @@ public static class Handlers
         "imageInfo"      => ImageInfo(Read<PathRequest>(request)),
         "layout"         => Layout(Read<LayoutRequest>(request)),
         "outputExists"   => OutputExists(Read<OutputExistsRequest>(request)),
+        "pathKind"       => PathKind(Read<PathRequest>(request)),
         "validate"       => Validate(Read<OptionsRequest>(request)),
         "start"          => Start(Read<OptionsRequest>(request)),
         "cancel"         => new CancelResult(MosaicJob.Cancel()),
@@ -75,6 +76,17 @@ public static class Handlers
 
         string file = Path.GetFullPath(request.OutputPath);
         return new OutputExistsResult(File.Exists(file), file);
+    }
+
+    // Whether a path is a file or a folder. The app uses it for files dropped on the window: an
+    // image becomes the source image and a folder becomes the card folder.
+    private static PathKindResult PathKind(PathRequest request)
+    {
+        string path = RequirePath(request);
+        string kind = Directory.Exists(path) ? "folder"
+                    : File.Exists(path)      ? "file"
+                    : "missing";
+        return new PathKindResult(kind);
     }
 
     private static ValidateResult Validate(OptionsRequest request)

@@ -60,6 +60,7 @@ every request with exactly one `response` carrying the same `id`.
 | `imageInfo` | `path` | `{ "width": 4000, "height": 3000 }` |
 | `layout` | `inputWidth`, `inputHeight`, `cardsPerRow`, `cardWidth`, `cardAspectRatio` | `{ "cols", "rows", "cardWidth", "cardHeight", "width", "height", "tileCount", "pixelCount" }` |
 | `outputExists` | `outputPath`, `deepZoom` | `{ "exists": false, "path": "D:\\photo_Mosaic" }` (`path` is what would be written: the PNG file, or the Deep Zoom folder) |
+| `pathKind` | `path` | `{ "kind": "folder" }`: `"file"`, `"folder"` or `"missing"`. Used for files dropped on the app window. |
 | `validate` | `options` | `{ "errors": ["Card folder not found: ..."] }` (empty list when the options are fine) |
 | `start` | `options` | none. The job runs in the background and reports through events. Refused if a job is already running or the options are invalid. |
 | `cancel` | none | `{ "wasRunning": true }` |

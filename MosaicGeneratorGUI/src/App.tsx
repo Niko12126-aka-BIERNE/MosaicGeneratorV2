@@ -4,14 +4,14 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { sidecar } from "./sidecar/client";
 import type { CardFolderInfo, DeviceInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./settings";
-import { convertOutputPath, suggestOutputPath } from "./paths";
+import { convertOutputPath, IMAGE_EXTENSIONS, suggestOutputPath } from "./paths";
 import { useJob } from "./useJob";
 import { applyTheme, loadTheme, type Theme } from "./theme";
 import { deviceLabel } from "./devices";
 import { ChoiceGroup, FieldLabel, NumberField, PathField, Section } from "./components/ui";
 import { LogPanel, RunPanel } from "./components/RunPanel";
-
-const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "bmp", "gif", "webp"];
+import { DropOverlay, Notice } from "./components/DropOverlay";
+import { useFileDrop, type DropAction } from "./useFileDrop";
 
 /** Above this many pixels a single PNG gets impractical to open, so suggest the zoomable viewer. */
 const LARGE_PNG_PIXELS = 1_000_000_000;
@@ -43,6 +43,14 @@ export default function App() {
   const job = useJob();
   const running = job.state.status === "running";
 
+  const drag = useFileDrop(handleDrop, running ? "Wait until the mosaic is finished, or cancel it first." : null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   // Devices come best first, so in automatic mode the first one is used. A remembered device
   // that isn't there anymore (e.g. a removed graphics card) also means automatic.
   const devices = engine.state === "ready" ? engine.devices : [];
@@ -69,15 +77,30 @@ export default function App() {
 
   async function pickInput() {
     const path = await open({ title: "Choose the source image", filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] });
-    if (!path) return;
+    if (path) await chooseInput(path);
+  }
+
+  async function pickCardFolder() {
+    const path = await open({ title: "Choose the folder with your card images", directory: true });
+    if (path) chooseCardFolder(path);
+  }
+
+  function handleDrop(action: DropAction) {
+    setNotice(null);
+    if (action.kind === "image") chooseInput(action.path);
+    else if (action.kind === "cardFolder") chooseCardFolder(action.path);
+    else setNotice(action.reason);
+  }
+
+  // Shared by the pickers and drag-and-drop.
+  async function chooseInput(path: string) {
     update({ inputPath: path });
     setOutputPath(await suggestOutputPath(path, settings.deepZoom));
     setOutputConfirmed(false);
   }
 
-  async function pickCardFolder() {
-    const path = await open({ title: "Choose the folder with your card images", directory: true });
-    if (path) update({ cardFolderPath: path });
+  function chooseCardFolder(path: string) {
+    update({ cardFolderPath: path });
   }
 
   async function pickOutput() {
@@ -253,7 +276,10 @@ export default function App() {
               {settings.inputPath && image.state === "ok" ? (
                 <img src={convertFileSrc(settings.inputPath)} alt="Source image" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="rounded bg-white/80 dark:bg-neutral-900/80 px-2 py-1 text-sm text-slate-500 dark:text-neutral-400">No image selected</span>
+                <span className="rounded bg-white/80 dark:bg-neutral-900/80 px-3 py-2 text-center text-sm text-slate-500 dark:text-neutral-400">
+                  No image selected
+                  <span className="block text-xs">Tip: drop an image or card folder anywhere on the window</span>
+                </span>
               )}
             </div>
           </Section>
@@ -264,6 +290,9 @@ export default function App() {
           </section>
         </div>
       </main>
+
+      <DropOverlay drag={drag} />
+      {notice && <Notice message={notice} onClose={() => setNotice(null)} />}
     </div>
   );
 }
