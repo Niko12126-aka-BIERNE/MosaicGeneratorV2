@@ -19,6 +19,7 @@ public static class Handlers
         "cardFolderInfo" => CardFolderInfo(Read<PathRequest>(request)),
         "imageInfo"      => ImageInfo(Read<PathRequest>(request)),
         "layout"         => Layout(Read<LayoutRequest>(request)),
+        "outputExists"   => OutputExists(Read<OutputExistsRequest>(request)),
         "validate"       => Validate(Read<OptionsRequest>(request)),
         "start"          => Start(Read<OptionsRequest>(request)),
         "cancel"         => new CancelResult(MosaicJob.Cancel()),
@@ -57,6 +58,23 @@ public static class Handlers
 
     private static MosaicLayout Layout(LayoutRequest r) =>
         MosaicLayout.Calculate(r.InputWidth, r.InputHeight, r.CardsPerRow, r.CardWidth, r.CardAspectRatio);
+
+    // Where the output would be written, and whether something is already there. For Deep Zoom
+    // that's a folder named after the output path, so the app can't easily work it out itself.
+    private static OutputExistsResult OutputExists(OutputExistsRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.OutputPath))
+            throw new RequestException("Request is missing \"outputPath\".");
+
+        if (request.DeepZoom)
+        {
+            string folder = DeepZoomWriter.GetOutputFolder(request.OutputPath);
+            return new OutputExistsResult(Directory.Exists(folder), folder);
+        }
+
+        string file = Path.GetFullPath(request.OutputPath);
+        return new OutputExistsResult(File.Exists(file), file);
+    }
 
     private static ValidateResult Validate(OptionsRequest request)
     {

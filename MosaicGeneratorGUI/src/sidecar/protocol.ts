@@ -67,6 +67,11 @@ export interface Requests {
     };
     result: MosaicLayout;
   };
+  outputExists: {
+    params: { outputPath: string; deepZoom: boolean };
+    /** `path` is what would be written: the PNG file, or the Deep Zoom folder. */
+    result: { exists: boolean; path: string };
+  };
   validate: { params: { options: MosaicOptions }; result: { errors: string[] } };
   start:    { params: { options: MosaicOptions }; result: undefined };
   cancel:   { params: Record<string, never>; result: { wasRunning: boolean } };

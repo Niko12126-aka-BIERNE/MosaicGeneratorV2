@@ -20,9 +20,12 @@ public static class DeepZoomWriter
     /// </summary>
     public static string GetOutputFolder(string outputPath)
     {
-        string dir  = Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? ".";
-        string stem = Path.GetFileNameWithoutExtension(outputPath);
-        return Path.Combine(dir, stem);
+        // The output path names the folder itself. Only a ".png" is dropped, for when a PNG
+        // path is reused for Deep Zoom; other dots are part of the name ("my.photo_Mosaic").
+        string fullPath = Path.GetFullPath(outputPath);
+        return string.Equals(Path.GetExtension(fullPath), ".png", StringComparison.OrdinalIgnoreCase)
+            ? Path.ChangeExtension(fullPath, null)
+            : fullPath;
     }
 
     // Writes the tiles, index.dzi and index.html. Returns the path of index.html.

@@ -59,6 +59,7 @@ every request with exactly one `response` carrying the same `id`.
 | `cardFolderInfo` | `path` | `{ "imageCount": 4812, "aspectRatio": 1.3968, "hasCache": true }` (`aspectRatio` is card height / width, left out when the folder has no images; `hasCache` means the folder has been used before) |
 | `imageInfo` | `path` | `{ "width": 4000, "height": 3000 }` |
 | `layout` | `inputWidth`, `inputHeight`, `cardsPerRow`, `cardWidth`, `cardAspectRatio` | `{ "cols", "rows", "cardWidth", "cardHeight", "width", "height", "tileCount", "pixelCount" }` |
+| `outputExists` | `outputPath`, `deepZoom` | `{ "exists": false, "path": "D:\\photo_Mosaic" }` (`path` is what would be written: the PNG file, or the Deep Zoom folder) |
 | `validate` | `options` | `{ "errors": ["Card folder not found: ..."] }` (empty list when the options are fine) |
 | `start` | `options` | none. The job runs in the background and reports through events. Refused if a job is already running or the options are invalid. |
 | `cancel` | none | `{ "wasRunning": true }` |

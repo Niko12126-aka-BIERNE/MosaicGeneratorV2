@@ -33,6 +33,8 @@ public sealed record LayoutRequest(
 
 public sealed record OptionsRequest(OptionsDto? Options);
 
+public sealed record OutputExistsRequest(string? OutputPath, bool DeepZoom);
+
 /// <summary>
 /// Mosaic settings as the app sends them. Anything left out gets the engine's default.
 /// The background colour is a hex string like "FFFFFF" or "#FFFFFF".
@@ -119,5 +121,8 @@ public sealed record CardFolderInfoResult(int ImageCount, float? AspectRatio, bo
 public sealed record ImageInfoResult(int Width, int Height);
 
 public sealed record ValidateResult(IReadOnlyList<string> Errors);
+
+/// <param name="Path">What would be written: the PNG file, or the Deep Zoom folder.</param>
+public sealed record OutputExistsResult(bool Exists, string Path);
 
 public sealed record CancelResult(bool WasRunning);

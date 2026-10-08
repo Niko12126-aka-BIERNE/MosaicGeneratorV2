@@ -16,11 +16,20 @@
         "width": 1000,
         "height": 760,
         "minWidth": 720,
-        "minHeight": 560
+        "minHeight": 560,
+        "center": true,
+        "theme": "Dark",
+        "backgroundColor": "#0a0a0a"
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
     }
   },
   "bundle": {
