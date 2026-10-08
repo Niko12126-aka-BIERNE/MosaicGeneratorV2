@@ -15,8 +15,9 @@ const project    = join(guiDir, "..", "MosaicGenerator.Sidecar", "MosaicGenerato
 const publishDir = join(guiDir, "src-tauri", "target", "sidecar-publish");
 const binDir     = join(guiDir, "src-tauri", "binaries");
 
-// Debug for now: ImageSharp 4.x fails Release builds until a Six Labors license is set up.
-const configuration = process.env.SIDECAR_CONFIGURATION ?? "Debug";
+// Release needs an ImageSharp license key in MosaicGenerator.Core/sixlabors.lic (see the main
+// README). Without one, set SIDECAR_CONFIGURATION=Debug.
+const configuration = process.env.SIDECAR_CONFIGURATION ?? "Release";
 
 // The Rust target triple of this machine, e.g. "x86_64-pc-windows-msvc".
 const rustcInfo = execFileSync("rustc", ["-vV"], { encoding: "utf8" });

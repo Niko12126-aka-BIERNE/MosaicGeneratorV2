@@ -51,7 +51,8 @@ and the app. The first run compiles the Rust dependencies and takes a few minute
 
 ## Notes
 
-- The sidecar is currently built in Debug, because ImageSharp 4.x fails Release builds
-  without a Six Labors license. Set `SIDECAR_CONFIGURATION=Release` once that's sorted.
+- The sidecar is built in Release, which needs an ImageSharp license key in
+  `MosaicGenerator.Core/sixlabors.lic` (see the main README). Without a key, set
+  `SIDECAR_CONFIGURATION=Debug` to build it in Debug instead.
 - When the window closes, the app sends the sidecar a `shutdown` request first, so a
   running job can remove its partial output. Tauri force-kills child processes on exit.

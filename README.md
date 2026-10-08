@@ -42,6 +42,12 @@ those tiles, either by matching average color or by matching actual patch conten
 dotnet build MosaicGenerator.slnx -c Release
 ```
 
+Release builds need a license key for [ImageSharp](https://sixlabors.com/products/imagesharp/),
+the image library this project uses. Six Labors gives free Community Licenses to open-source
+projects, non-profits and small businesses at [licensing.sixlabors.com](https://licensing.sixlabors.com).
+Save the key as `MosaicGenerator.Core/sixlabors.lic`. It's in `.gitignore`, so it never gets
+committed. Without a key, use Debug builds (`-c Debug`), which only show a warning.
+
 The solution is split into:
 
 - `MosaicGenerator.Core`: the mosaic engine (card database, matching, compositing, PNG/Deep Zoom writers).
