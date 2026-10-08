@@ -1,0 +1,75 @@
+# Checks that everything still builds on Windows, macOS and Linux, on every push to main and
+# every pull request. Nothing is published here; releases come from release.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # see every OS's result, even when one fails
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+
+    env:
+      # Debug builds only warn without an ImageSharp license key, so CI doesn't need one.
+      SIDECAR_CONFIGURATION: Debug
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: MosaicGeneratorGUI/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: MosaicGeneratorGUI/src-tauri
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Build the engine, CLI and sidecar
+        run: dotnet build MosaicGenerator.slnx -c Debug
+
+      - name: Install frontend dependencies
+        working-directory: MosaicGeneratorGUI
+        run: npm ci
+
+      - name: Build the sidecar for the app
+        working-directory: MosaicGeneratorGUI
+        run: npm run sidecar
+
+      # Starts the bundled sidecar and asks which devices it can use. The processor must always be
+      # one of them, so this checks the engine actually runs on this OS.
+      - name: Smoke-test the sidecar
+        shell: bash
+        working-directory: MosaicGeneratorGUI/src-tauri/binaries
+        run: |
+          printf '%s\n' '{"id":1,"type":"systemInfo"}' '{"id":2,"type":"shutdown"}' \
+            | ./mosaic-sidecar-* | tee "$RUNNER_TEMP/sidecar.txt"
+          grep -q '"id":"cpu"' "$RUNNER_TEMP/sidecar.txt"
+
+      - name: Build the frontend
+        working-directory: MosaicGeneratorGUI
+        run: npm run build
+
+      - name: Check the Tauri app compiles
+        working-directory: MosaicGeneratorGUI/src-tauri
+        run: cargo check --locked

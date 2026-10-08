@@ -1,0 +1,104 @@
+# Builds the installers for Windows, macOS and Linux when a version tag like v1.2.3 is pushed,
+# and uploads them to a DRAFT GitHub Release. Check the draft on GitHub, then click Publish.
+#
+# To release: bump "version" in MosaicGeneratorGUI/package.json, commit, tag the commit with
+# v<that version>, and push the tag. Needs the repository secret SIXLABORS_LICENSE_KEY.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # to create the release and upload the installers
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the app version
+        run: |
+          version=$(node -p "require('./MosaicGeneratorGUI/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the version in MosaicGeneratorGUI/package.json ($version). Use the tag v$version, or change the version first."
+            exit 1
+          fi
+
+      - name: Check the license key secret is set
+        env:
+          LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+        run: |
+          if [ -z "$LICENSE_KEY" ]; then
+            echo "::error::The repository secret SIXLABORS_LICENSE_KEY is missing. Release builds need the ImageSharp license key."
+            exit 1
+          fi
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: false # one OS failing shouldn't cancel the others
+      matrix:
+        # macos-latest is Apple Silicon. ubuntu-22.04 rather than the newest Ubuntu, so the
+        # Linux builds also run on distributions with older system libraries.
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: MosaicGeneratorGUI/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: MosaicGeneratorGUI/src-tauri
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # The same file as on your PC. It only exists during this build and is never committed.
+      - name: Add the ImageSharp license key
+        shell: bash
+        env:
+          LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+        run: printf '%s' "$LICENSE_KEY" > MosaicGenerator.Core/sixlabors.lic
+
+      - name: Install frontend dependencies
+        working-directory: MosaicGeneratorGUI
+        run: npm ci
+
+      # Runs `tauri build` (which also builds the sidecar, see tauri.conf.json), then creates the
+      # draft release for this tag, or adds to it, and uploads the installers.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: MosaicGeneratorGUI
+          tagName: ${{ github.ref_name }}
+          releaseName: Mosaic Generator ${{ github.ref_name }}
+          releaseDraft: true
+          releaseBody: |
+            ## Downloads
+
+            - **Windows**: `Mosaic Generator_*_x64-setup.exe`
+            - **macOS** (Apple Silicon): `Mosaic Generator_*_aarch64.dmg`
+            - **Linux**: `.AppImage` (runs on most distributions) or `.deb` (Debian, Ubuntu)
+
+            The installers aren't code-signed. On Windows, click **More info**, then **Run anyway**
+            if "Windows protected your PC" appears. The macOS and Linux builds haven't been tested
+            on real machines yet.

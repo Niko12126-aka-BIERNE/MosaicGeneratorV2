@@ -50,6 +50,9 @@
     ],
     "externalBin": [
       "binaries/mosaic-sidecar"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }

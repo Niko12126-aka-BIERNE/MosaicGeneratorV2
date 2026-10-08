@@ -49,6 +49,22 @@ and the app. The first run compiles the Rust dependencies and takes a few minute
 | `src-tauri/capabilities/default.json` | What the UI is allowed to do: spawn only the sidecar, open dialogs, and so on. |
 | `app-icon.svg` | Source for the app icon. After editing it, run `npm run icon` (`scripts/generate-icon.mjs`) to regenerate every size in `src-tauri/icons/`. |
 
+## Releasing
+
+GitHub Actions builds the installers (see `.github/workflows/`):
+
+- `ci.yml` checks that everything builds on Windows, macOS and Linux on every push to main.
+- `release.yml` runs when a version tag is pushed. It builds the installers on all three
+  systems and uploads them to a draft GitHub Release.
+
+To make a release:
+
+1. Bump `version` in `package.json` (the only place the app version is set) and commit.
+2. Tag that commit `v<version>`, e.g. `v0.2.0`, and push the tag.
+3. When the workflow is done, check the draft release on GitHub and click **Publish**.
+
+The workflow needs the ImageSharp license key as the repository secret `SIXLABORS_LICENSE_KEY`.
+
 ## Notes
 
 - The sidecar is built in Release, which needs an ImageSharp license key in
