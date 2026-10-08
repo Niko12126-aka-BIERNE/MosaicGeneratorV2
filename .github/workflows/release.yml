@@ -95,8 +95,8 @@ jobs:
           releaseBody: |
             ## Downloads
 
-            - **Windows**: `Mosaic Generator_*_x64-setup.exe`
-            - **macOS** (Apple Silicon): `Mosaic Generator_*_aarch64.dmg`
+            - **Windows**: the file ending in `_x64-setup.exe`
+            - **macOS** (Apple Silicon): the file ending in `_aarch64.dmg`
             - **Linux**: `.AppImage` (runs on most distributions) or `.deb` (Debian, Ubuntu)
 
             The installers aren't code-signed. On Windows, click **More info**, then **Run anyway**

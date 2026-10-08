@@ -34,7 +34,7 @@ those tiles, either by matching average color or by matching actual patch conten
 The easiest way to use Mosaic Generator is the desktop app. Download the installer from the
 [Releases page](https://github.com/Niko12126-aka-BIERNE/MosaicGeneratorV2/releases):
 
-- **Windows**: `Mosaic Generator_<version>_x64-setup.exe`. It installs without admin rights,
+- **Windows**: the file ending in `_x64-setup.exe`. It installs without admin rights,
   and nothing else is needed (.NET is included).
 - **macOS** (`.dmg`) and **Linux** (`.AppImage`, `.deb`): built automatically, but not yet tested
   on real machines. Reports are welcome.
