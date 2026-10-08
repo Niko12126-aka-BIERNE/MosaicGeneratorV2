@@ -31,7 +31,7 @@ those tiles, either by matching average color or by matching actual patch conten
 
 ## Requirements
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - Optional, for speed: a GPU with up-to-date drivers, either NVIDIA (CUDA) or AMD/Intel
   (OpenCL C 2.0 or newer). Without one, matching runs on the processor.
 - A folder of tile images to build mosaics from (JPG, PNG, BMP, GIF, or WEBP)
