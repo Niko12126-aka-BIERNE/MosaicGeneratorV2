@@ -29,6 +29,21 @@ those tiles, either by matching average color or by matching actual patch conten
   `allCardLabData.json` in the card folder, so only newly added cards are reprocessed
   on subsequent runs.
 
+## Download
+
+The easiest way to use Mosaic Generator is the desktop app. Download the installer from the
+[Releases page](https://github.com/Niko12126-aka-BIERNE/MosaicGeneratorV2/releases):
+
+- **Windows**: `Mosaic Generator_<version>_x64-setup.exe`. It installs without admin rights,
+  and nothing else is needed (.NET is included).
+- **macOS** (`.dmg`) and **Linux** (`.AppImage`, `.deb`): built automatically, but not yet tested
+  on real machines. Reports are welcome.
+
+The installers aren't code-signed yet, so Windows may show "Windows protected your PC" the
+first time. Click **More info**, then **Run anyway**.
+
+To build the app or the command-line tool yourself, read on.
+
 ## Requirements
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)

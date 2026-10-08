@@ -1,5 +1,6 @@
 [package]
 name = "mosaic-generator-gui"
+# Not the app's version: that comes from package.json (see "version" in tauri.conf.json).
 version = "0.1.0"
 description = "Mosaic Generator GUI"
 authors = ["Nikolaj Andersen"]

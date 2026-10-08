@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Mosaic Generator",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "com.mosaicgenerator.gui",
   "build": {
     "beforeDevCommand": "npm run sidecar && npm run dev",
@@ -34,7 +34,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg", "appimage", "deb"],
+    "publisher": "Niko12126-aka-BIERNE",
+    "copyright": "Copyright 2026 Niko12126-aka-BIERNE. Licensed under the Apache License 2.0.",
+    "homepage": "https://github.com/Niko12126-aka-BIERNE/MosaicGeneratorV2",
+    "category": "GraphicsAndDesign",
+    "shortDescription": "Turn a picture into a mosaic made of your own card images.",
+    "longDescription": "Mosaic Generator rebuilds a picture out of a folder of card images, matching each spot by colour or by detail. It runs on NVIDIA (CUDA) and AMD/Intel (OpenCL) graphics cards, or on the processor, and saves a PNG or a zoomable Deep Zoom viewer.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
