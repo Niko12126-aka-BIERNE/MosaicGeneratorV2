@@ -52,7 +52,8 @@
       "binaries/mosaic-sidecar"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "./Entitlements.plist"
     }
   }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS permissions for the app and its sidecar, embedded when Tauri signs them (see
+  bundle.macOS.entitlements in tauri.conf.json). The signature uses the hardened runtime,
+  which blocks things the .NET sidecar needs; without these, macOS kills it on startup.
+-->
+<plist version="1.0">
+<dict>
+    <!-- .NET compiles code while running (JIT), and ILGPU generates the GPU kernels at runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- The single-file sidecar unpacks its native libraries to a temporary folder and loads
+         them from there. They aren't signed by the app's identity (ad-hoc signing has none). -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

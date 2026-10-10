@@ -100,5 +100,11 @@ jobs:
             - **Linux**: `.AppImage` (runs on most distributions) or `.deb` (Debian, Ubuntu)
 
             The installers aren't code-signed. On Windows, click **More info**, then **Run anyway**
-            if "Windows protected your PC" appears. The macOS and Linux builds haven't been tested
-            on real machines yet.
+            if "Windows protected your PC" appears. On macOS, drag the app to Applications, and if
+            macOS says it's damaged or can't be verified, run this once in Terminal:
+
+            ```
+            xattr -cr "/Applications/Mosaic Generator.app"
+            ```
+
+            The Linux builds haven't been tested on real machines yet.

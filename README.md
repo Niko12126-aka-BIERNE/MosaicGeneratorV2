@@ -36,11 +36,20 @@ The easiest way to use Mosaic Generator is the desktop app. Download the install
 
 - **Windows**: the file ending in `_x64-setup.exe`. It installs without admin rights,
   and nothing else is needed (.NET is included).
-- **macOS** (`.dmg`) and **Linux** (`.AppImage`, `.deb`): built automatically, but not yet tested
-  on real machines. Reports are welcome.
+- **macOS** (Apple Silicon): the file ending in `_aarch64.dmg`. See below if macOS refuses to
+  open it.
+- **Linux** (`.AppImage`, `.deb`): built automatically, but not yet tested on real machines.
+  Reports are welcome.
 
 The installers aren't code-signed yet, so Windows may show "Windows protected your PC" the
 first time. Click **More info**, then **Run anyway**.
+
+On macOS, drag the app to Applications. If macOS says it "is damaged" or "can't be verified",
+run this once in Terminal, which removes the download mark macOS checks:
+
+```sh
+xattr -cr "/Applications/Mosaic Generator.app"
+```
 
 To build the app or the command-line tool yourself, read on.
 

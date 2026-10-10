@@ -73,3 +73,20 @@ jobs:
       - name: Check the Tauri app compiles
         working-directory: MosaicGeneratorGUI/src-tauri
         run: cargo check --locked
+
+      # The smoke test above runs the sidecar before Tauri signs it. On macOS the signature turns
+      # on the hardened runtime, which kills the .NET sidecar on startup unless the signature
+      # carries src-tauri/Entitlements.plist. So build the signed app the way a release does, and
+      # check the sidecar inside it has the entitlements and still starts.
+      - name: Smoke-test the sidecar in the signed macOS app
+        if: runner.os == 'macOS'
+        working-directory: MosaicGeneratorGUI
+        run: |
+          npm run tauri build -- --bundles app
+          sidecar="src-tauri/target/release/bundle/macos/Mosaic Generator.app/Contents/MacOS/mosaic-sidecar"
+          codesign --display --verbose --entitlements - "$sidecar" 2>&1 | tee "$RUNNER_TEMP/codesign.txt"
+          grep -q 'flags=.*runtime' "$RUNNER_TEMP/codesign.txt"
+          grep -q 'com.apple.security.cs.allow-jit' "$RUNNER_TEMP/codesign.txt"
+          printf '%s\n' '{"id":1,"type":"systemInfo"}' '{"id":2,"type":"shutdown"}' \
+            | "$sidecar" | tee "$RUNNER_TEMP/sidecar-signed.txt"
+          grep -q '"id":"cpu"' "$RUNNER_TEMP/sidecar-signed.txt"
