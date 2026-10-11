@@ -105,54 +105,43 @@ public static class PatchMatcher
     }
 
     // Card loading
+
+    // Every card at match resolution, as the floats the comparison uses. The scaled pixels come
+    // from CardPixelCache (only new or changed cards are opened and scaled); turning them into
+    // floats is quick and depends on labSsd, so it isn't cached.
     private static float[] LoadCardFloats(
         CardRecord[] cards, string cardFolderPath,
         int matchWidth, int matchHeight, int matchPixels3,
         int totalElements, bool labSsd, Color background,
         ProgressReporter? progress, CancellationToken ct)
     {
+        byte[] pixels = CardPixelCache.Load(
+            cards, cardFolderPath, matchWidth, matchHeight, background,
+            progress, fraction => progress?.Fraction(0.3 * fraction), ct);
+
         float[] cardFloats = new float[totalElements];
-        int     done       = 0;
 
-        Parallel.For(0, cards.Length,
-            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
-            i =>
+        Parallel.For(0, cards.Length, new ParallelOptions { CancellationToken = ct }, i =>
+        {
+            int cardBase = i * matchPixels3;
+            for (int v = cardBase; v < cardBase + matchPixels3; v += 3)
             {
-                string path = Path.Combine(cardFolderPath, cards[i].FileName);
-                using var img = ImageIO.LoadFlattened(path, background);
-                img.Mutate(ctx => ctx.Resize(matchWidth, matchHeight));
-
-                int cardBase = i * matchPixels3;
-                img.ProcessPixelRows(acc =>
+                byte r = pixels[v], g = pixels[v + 1], b = pixels[v + 2];
+                if (labSsd)
                 {
-                    for (int y = 0; y < matchHeight; y++)
-                    {
-                        var row     = acc.GetRowSpan(y);
-                        int rowBase = cardBase + y * matchWidth * 3;
-                        for (int x = 0; x < matchWidth; x++)
-                        {
-                            if (labSsd)
-                            {
-                                var (l, a, b) = ColorMath.RgbToLab(row[x].R, row[x].G, row[x].B);
-                                cardFloats[rowBase + x * 3]     = l / 70f;   // L* weighted ~2 times more than chroma
-                                cardFloats[rowBase + x * 3 + 1] = a / 255f;
-                                cardFloats[rowBase + x * 3 + 2] = b / 255f;
-                            }
-                            else
-                            {
-                                cardFloats[rowBase + x * 3]     = row[x].R / 255f;
-                                cardFloats[rowBase + x * 3 + 1] = row[x].G / 255f;
-                                cardFloats[rowBase + x * 3 + 2] = row[x].B / 255f;
-                            }
-                        }
-                    }
-                });
-
-                int n = Interlocked.Increment(ref done);
-                progress?.Fraction(0.3 * n / cards.Length);
-                if (n % 1000 == 0 || n == cards.Length)
-                    progress?.Log($"    Loaded {n}/{cards.Length} card images...");
-            });
+                    var (l, a, bb) = ColorMath.RgbToLab(r, g, b);
+                    cardFloats[v]     = l / 70f;   // L* weighted ~2 times more than chroma
+                    cardFloats[v + 1] = a / 255f;
+                    cardFloats[v + 2] = bb / 255f;
+                }
+                else
+                {
+                    cardFloats[v]     = r / 255f;
+                    cardFloats[v + 1] = g / 255f;
+                    cardFloats[v + 2] = b / 255f;
+                }
+            }
+        });
 
         return cardFloats;
     }

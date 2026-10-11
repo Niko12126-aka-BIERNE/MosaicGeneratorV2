@@ -54,8 +54,11 @@ xattr -cr "/Applications/Mosaic Generator.app"
 ### Data the app keeps
 
 The app and the command-line tool remember each card folder's card colors, so the next run
-doesn't have to analyse every card again. This data is kept in one folder, never next to your
-own files:
+doesn't have to analyse every card again. For Detail match they also keep the cards scaled
+down to the detail resolution, so later runs with the same settings skip loading every card
+image (with 19,000 cards: about 25 seconds down to under a second). That cache takes a few
+hundred MB per setting, and at most 3 are kept; the least recently used is removed
+automatically. All of this is kept in one folder, never next to your own files:
 
 - **Windows**: `%LOCALAPPDATA%\com.mosaicgenerator.gui`
 - **macOS**: `~/Library/Application Support/com.mosaicgenerator.gui`
