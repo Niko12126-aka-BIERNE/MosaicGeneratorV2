@@ -7,7 +7,10 @@ namespace MosaicGenerator.Core;
 
 public static class DeepZoomWriter
 {
-    private const int TileSize = 256;
+    // Writing a file has a fixed cost (on Windows about 0.5-1 ms, antivirus scanning included),
+    // which dominated with 256-pixel tiles: tens of thousands of files for a big mosaic.
+    // 512 gives four times fewer files; the viewer reads the size from index.dzi.
+    private const int TileSize = 512;
     private static readonly PngEncoder TilePng = new() { CompressionLevel = PngCompressionLevel.Level3 };
 
     // Share of the reported progress fraction spent writing the full-resolution tiles.
