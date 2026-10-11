@@ -13,6 +13,10 @@ namespace MosaicGenerator.Core.Compute;
 /// of about <see cref="TargetLaunchSeconds"/> each, see <see cref="RunInSlices"/>. Between
 /// launches, progress is reported and cancellation is checked.
 /// </para>
+/// <para>
+/// The color kernel gives each tile one thread. The patch kernel, which compares thousands of
+/// values per card, gives each tile a group of threads that share the work, see <see cref="PatchKernel"/>.
+/// </para>
 /// </summary>
 public sealed class IlgpuBackend : IMatchBackend
 {
@@ -24,11 +28,15 @@ public sealed class IlgpuBackend : IMatchBackend
     // launch still finishes in time.
     private const double TargetLaunchSeconds = 0.25;
 
-    // Compiled on first use, which takes a few seconds (up to ~30s for the patch kernel).
+    // Threads per group in the patch kernel, which gives each tile a whole group. The largest
+    // power of two up to this that the device allows is used (see PatchGroupSize).
+    private const int MaxPatchGroupSize = 256;
+
+    // Compiled on first use (well under a second).
     private Action<Index1D, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
         ArrayView1D<float, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>,
         int, int, int>? _colorKernel;
-    private Action<Index1D, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
+    private Action<KernelConfig, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
         ArrayView1D<int, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
         ArrayView1D<float, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>,
         int, int, int, int, int>? _patchKernel;
@@ -58,7 +66,7 @@ public sealed class IlgpuBackend : IMatchBackend
 
         if (_colorKernel == null)
         {
-            _log?.Log("  Compiling GPU kernel (first run may take a few seconds)...");
+            _log?.Log("  Compiling GPU kernel...");
             _colorKernel = _accelerator.LoadAutoGroupedStreamKernel<
                 Index1D,
                 ArrayView1D<float, Stride1D.Dense>,
@@ -68,7 +76,10 @@ public sealed class IlgpuBackend : IMatchBackend
                 int, int, int>(ColorKernel);
         }
 
-        RunInSlices(tileCount, cardLab.Length / 3, progress, ct, (tileOffset, tiles, cardStart, cardEnd) =>
+        // One thread per tile: twice the threads the GPU can run at once per launch.
+        int tileBatch = (int)Math.Min(2L * _accelerator.MaxNumThreads, int.MaxValue);
+
+        RunInSlices(tileCount, cardLab.Length / 3, tileBatch, progress, ct, (tileOffset, tiles, cardStart, cardEnd) =>
             _colorKernel(tiles, deviceCards.View, deviceTiles.View, deviceBestDists.View, deviceBestCards.View,
                 tileOffset, cardStart, cardEnd));
 
@@ -97,9 +108,8 @@ public sealed class IlgpuBackend : IMatchBackend
 
         if (_patchKernel == null)
         {
-            _log?.Log("  Compiling GPU kernel (first run may take ~30s)...");
-            _patchKernel = _accelerator.LoadAutoGroupedStreamKernel<
-                Index1D,
+            _log?.Log("  Compiling GPU kernel...");
+            _patchKernel = _accelerator.LoadStreamKernel<
                 ArrayView1D<float, Stride1D.Dense>,
                 ArrayView1D<float, Stride1D.Dense>,
                 ArrayView1D<int,   Stride1D.Dense>,
@@ -110,30 +120,44 @@ public sealed class IlgpuBackend : IMatchBackend
                 int, int, int, int, int>(PatchKernel);
         }
 
-        RunInSlices(tileCount, candidatesPerTile, progress, ct, (tileOffset, tiles, kStart, kEnd) =>
-            _patchKernel(tiles, deviceCards.View, deviceTiles.View, deviceCandidates.View,
+        // One group per tile: enough tiles per launch to fill the GPU eight times over, so a few
+        // groups finishing late don't leave it idle at the end of a launch.
+        int groupSize = PatchGroupSize();
+        int tileBatch = (int)Math.Max(1, 8L * _accelerator.MaxNumThreads / groupSize);
+
+        RunInSlices(tileCount, candidatesPerTile, tileBatch, progress, ct, (tileOffset, tiles, kStart, kEnd) =>
+            _patchKernel(new KernelConfig(tiles, groupSize), deviceCards.View, deviceTiles.View, deviceCandidates.View,
                 deviceCardColors.View, deviceTileColors.View, deviceBestDists.View, deviceBestCards.View,
                 candidatesPerTile, valuesPerPatch, tileOffset, kStart, kEnd));
 
         return deviceBestCards.GetAsArray1D();
     }
 
+    // The patch kernel's group size: a power of two (its sum is added up in halves), at most
+    // MaxPatchGroupSize and what the device allows.
+    private int PatchGroupSize()
+    {
+        int size = MaxPatchGroupSize;
+        while (size > 1 && size > _accelerator.MaxNumThreadsPerGroup)
+            size /= 2;
+        return size;
+    }
+
     // Splits the work (every tile compared with cardsPerTile cards) into launches short enough
     // to stay well inside the watchdog, and calls launch(tileOffset, tiles, cardStart, cardEnd)
     // for each, waiting for it to finish.
     //
-    // Each GPU thread handles one tile, and one thread can take ~100ms to go through all its
-    // cards, so launching fewer tiles doesn't make a launch shorter: it only leaves the GPU
-    // idle. Instead, every launch runs enough tiles to fill the GPU, and the cards are split
-    // into slices; the kernels keep each tile's best match so far in GPU memory between slices.
-    // Launch time then grows with the slice size, so the first slice holds a single card and
-    // each next one is scaled by how long the last took, growing at most 2x at a time.
+    // Every launch runs tileBatch tiles (chosen by the caller to fill the GPU), and the cards
+    // are split into slices; the kernels keep each tile's best match so far in GPU memory
+    // between slices. Launching fewer tiles wouldn't make a launch shorter, as one tile's
+    // cards can take a long time on their own: it would only leave the GPU idle. Launch time
+    // grows with the slice size, so the first slice holds a single card and each next one is
+    // scaled by how long the last took, growing at most 2x at a time.
     private void RunInSlices(
-        int tileCount, int cardsPerTile, Action<double>? progress, CancellationToken ct,
+        int tileCount, int cardsPerTile, int tileBatch, Action<double>? progress, CancellationToken ct,
         Action<int, int, int, int> launch)
     {
-        // Twice the threads the GPU can run at once, so it stays busy to the end of each launch.
-        int  tileBatch = (int)Math.Clamp(2L * _accelerator.MaxNumThreads, 1, tileCount);
+        tileBatch = Math.Clamp(tileBatch, 1, tileCount);
         int  slice     = 1;
         long total     = (long)tileCount * cardsPerTile;
         long done      = 0;
@@ -207,11 +231,15 @@ public sealed class IlgpuBackend : IMatchBackend
         bestCards[ti] = bestCard;
     }
 
-    // One thread per tile of the batch starting at tileOffset. Goes through this tile's
-    // pre-selected candidates [kStart, kEnd), scores each by float SSD plus the Color term,
-    // and keeps the minimum, continuing from the best match the previous slice stored.
+    // One group per tile of the batch starting at tileOffset. For each of this tile's
+    // pre-selected candidates [kStart, kEnd), the group's threads each add up the squared
+    // differences of every groupSize-th value (thread i takes values i, i + groupSize, ...),
+    // so neighbouring threads read neighbouring memory, which the GPU fetches in one go.
+    // The partial sums are then added up in shared memory, and the group's first thread adds
+    // the Color term and keeps the minimum, continuing from the best match the previous slice
+    // stored. The sum's order differs from the CPU backend's, so a near tie between two
+    // cards can occasionally go the other way.
     private static void PatchKernel(
-        Index1D                            index,
         ArrayView1D<float, Stride1D.Dense> cardPixels,
         ArrayView1D<float, Stride1D.Dense> tilePixels,
         ArrayView1D<int,   Stride1D.Dense> candidates,
@@ -225,15 +253,15 @@ public sealed class IlgpuBackend : IMatchBackend
         int kStart,
         int kEnd)
     {
-        int ti            = index.X + tileOffset;
+        var partialSums = SharedMemory.Allocate<float>(MaxPatchGroupSize);
+
+        int ti            = Grid.IdxX + tileOffset;
+        int thread        = Group.IdxX;
+        int groupSize     = Group.DimX;
         int tileBase      = ti * matchPixels3;
         int candidateBase = ti * K;
 
-        float tileL       = tileColors[ti * 4];
-        float tileA       = tileColors[ti * 4 + 1];
-        float tileB       = tileColors[ti * 4 + 2];
-        float colorFactor = tileColors[ti * 4 + 3];
-
+        // Only the first thread's copies are used.
         int   bestCard = kStart == 0 ? candidates[candidateBase] : bestCards[ti];
         float bestDist = kStart == 0 ? float.MaxValue : bestDists[ti];
 
@@ -241,25 +269,45 @@ public sealed class IlgpuBackend : IMatchBackend
         {
             int   c        = candidates[candidateBase + k];
             int   cardBase = c * matchPixels3;
-            float dist     = 0f;
+            float sum      = 0f;
 
-            for (int p = 0; p < matchPixels3; p++)
+            for (int p = thread; p < matchPixels3; p += groupSize)
             {
                 float diff = tilePixels[tileBase + p] - cardPixels[cardBase + p];
-                dist += diff * diff;
+                sum += diff * diff;
             }
 
-            dist += MatchMath.ColorTerm(colorFactor, tileL, tileA, tileB,
-                cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]);
+            partialSums[thread] = sum;
+            Group.Barrier();
 
-            if (dist < bestDist)
+            for (int half = groupSize / 2; half > 0; half /= 2)
             {
-                bestDist = dist;
-                bestCard = c;
+                if (thread < half)
+                    partialSums[thread] += partialSums[thread + half];
+                Group.Barrier();
             }
+
+            if (thread == 0)
+            {
+                float dist = partialSums[0] + MatchMath.ColorTerm(
+                    tileColors[ti * 4 + 3], tileColors[ti * 4], tileColors[ti * 4 + 1], tileColors[ti * 4 + 2],
+                    cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]);
+
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestCard = c;
+                }
+            }
+
+            // partialSums[0] must be read before the next candidate overwrites it.
+            Group.Barrier();
         }
 
-        bestDists[ti] = bestDist;
-        bestCards[ti] = bestCard;
+        if (thread == 0)
+        {
+            bestDists[ti] = bestDist;
+            bestCards[ti] = bestCard;
+        }
     }
 }
