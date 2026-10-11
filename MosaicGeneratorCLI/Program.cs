@@ -35,7 +35,7 @@ if (args.Length < 2)
     Console.WriteLine("  --match-width <n>      Patch matching resolution in pixels (default: 64) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --match-candidates <n> Top-K candidate cards per tile for patch matching (default: 500) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --lab-ssd              Use perceptually uniform LAB SSD instead of RGB SSD (slower, better colors and contrast in some scenarios)");
-    Console.WriteLine($"  --color-weight [n]     Make Color count more on flat tiles in patch matching (off by default; without a value: {MosaicOptions.RecommendedColorWeight}) [better Color in flat areas and gradients, higher values cost a little contrast]");
+    Console.WriteLine($"  --color-weight [n]     Make color count more on flat tiles in patch matching (off by default; without a value: {MosaicOptions.RecommendedColorWeight}) [better color in flat areas and gradients, higher values cost a little contrast]");
     Console.WriteLine("  --deep-zoom            Generate Deep Zoom tiles + HTML viewer instead of PNG (great for large images, that would be too large for a single PNG)");
     Console.WriteLine("  --background-color <hex>  Background to flatten transparent pixels onto, e.g. FFFFFF (default: black)");
     Console.WriteLine("  --transparency-threshold <pct>  Tiles more transparent than this are left blank in the output (default: 70)");

@@ -11,7 +11,8 @@ namespace MosaicGenerator.Sidecar;
 public static class Protocol
 {
     /// <summary>Bumped when messages change in a way the app needs to know about.</summary>
-    public const int Version = 2;   // 2: compute devices (systemInfo, options.device, done.device)
+    public const int Version = 3;   // 2: compute devices (systemInfo, options.device, done.device)
+                                    // 3: options.colorWeight
 
     /// <summary>camelCase names, enums as camelCase strings, nulls left out.</summary>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -51,6 +52,7 @@ public sealed record OptionsDto(
     int?    MatchWidth,
     int?    MatchCandidates,
     bool?   LabSsd,
+    float?  ColorWeight,
     bool?   DeepZoom,
     string? BackgroundColor,
     int?    TransparencyThreshold,
@@ -84,6 +86,7 @@ public sealed record OptionsDto(
             MatchWidth            = MatchWidth            ?? Defaults.MatchWidth,
             MatchCandidates       = MatchCandidates       ?? Defaults.MatchCandidates,
             LabSsd                = LabSsd                ?? Defaults.LabSsd,
+            ColorWeight           = ColorWeight           ?? Defaults.ColorWeight,
             DeepZoom              = DeepZoom              ?? Defaults.DeepZoom,
             Background            = background,
             TransparencyThreshold = TransparencyThreshold ?? Defaults.TransparencyThreshold,

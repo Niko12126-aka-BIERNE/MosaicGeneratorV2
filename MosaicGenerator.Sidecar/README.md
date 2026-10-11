@@ -79,6 +79,7 @@ every request with exactly one `response` carrying the same `id`.
   "matchWidth": 64,
   "matchCandidates": 500,
   "labSsd": false,
+  "colorWeight": 0,
   "deepZoom": false,
   "backgroundColor": "000000",
   "transparencyThreshold": 70,

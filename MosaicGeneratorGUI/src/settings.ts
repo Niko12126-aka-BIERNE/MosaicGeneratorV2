@@ -10,6 +10,9 @@ export interface Settings {
   matchWidth: number;
   matchCandidates: number;
   labSsd: boolean;
+  colorWeightEnabled: boolean;
+  /** Kept while the option is off, so turning it back on restores it. */
+  colorWeight: number;
   /** "#rrggbb", as used by <input type="color">. */
   backgroundColor: string;
   transparencyThreshold: number;
@@ -28,6 +31,8 @@ export const DEFAULT_SETTINGS: Settings = {
   matchWidth: 64,
   matchCandidates: 500,
   labSsd: false,
+  colorWeightEnabled: false,
+  colorWeight: 4, // MosaicOptions.RecommendedColorWeight
   backgroundColor: "#000000",
   transparencyThreshold: 70,
   device: "auto",

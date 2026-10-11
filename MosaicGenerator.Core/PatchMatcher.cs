@@ -71,7 +71,7 @@ public static class PatchMatcher
         progress?.Log($"  Match resolution : {matchWidth}×{matchHeight}px per tile");
         progress?.Log($"  Candidates       : top {effectiveK} of {cards.Length} cards per tile");
         progress?.Log($"  Pixel metric     : {(labSsd ? "LAB SSD (perceptually uniform)" : "RGB SSD")}");
-        progress?.Log($"  Color weight     : {(colorWeight > 0 ? $"{colorWeight} (on flat tiles, Color counts up to {1 + colorWeight}x)" : "off")}");
+        progress?.Log($"  Color weight     : {(colorWeight > 0 ? $"{colorWeight} (on flat tiles, color counts up to {1 + colorWeight}x)" : "off")}");
         progress?.Log($"  Card buffer      : {cardElemCount * 4 / 1024 / 1024} MB");
         progress?.Log($"  Tile buffer      : {tileElemCount * 4 / 1024 / 1024} MB");
 

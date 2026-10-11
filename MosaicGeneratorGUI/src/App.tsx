@@ -160,6 +160,7 @@ export default function App() {
       matchWidth: settings.matchWidth,
       matchCandidates: settings.matchCandidates,
       labSsd: settings.labSsd,
+      colorWeight: settings.colorWeightEnabled ? settings.colorWeight : 0,
       deepZoom: settings.deepZoom,
       backgroundColor: settings.backgroundColor,
       transparencyThreshold: settings.transparencyThreshold,
@@ -458,6 +459,29 @@ function AdvancedSettings(props: {
                 <span className="block text-xs text-slate-500 dark:text-neutral-400">Slower, but can give better colours and contrast. (LAB colour space)</span>
               </span>
             </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={settings.colorWeightEnabled}
+                onChange={(e) => update({ colorWeightEnabled: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Keep color accurate in flat areas</span>
+                <span className="block text-xs text-slate-500 dark:text-neutral-400">
+                  Detail match can pick plain cards of the wrong color for flat areas and gradients. This makes
+                  color count more there, while text and edges keep their detail.
+                </span>
+              </span>
+            </label>
+            {settings.colorWeightEnabled && (
+              <div className="pl-6">
+                <FieldLabel hint="How much more color counts on flat areas. Higher gives more accurate color, but a little less contrast. 4 is a good balance.">
+                  Color weight
+                </FieldLabel>
+                <NumberField value={settings.colorWeight} min={1} max={32} onChange={(colorWeight) => update({ colorWeight })} />
+              </div>
+            )}
           </>
         )}
 
@@ -497,6 +521,8 @@ function AdvancedSettings(props: {
               matchWidth: DEFAULT_SETTINGS.matchWidth,
               matchCandidates: DEFAULT_SETTINGS.matchCandidates,
               labSsd: DEFAULT_SETTINGS.labSsd,
+              colorWeightEnabled: DEFAULT_SETTINGS.colorWeightEnabled,
+              colorWeight: DEFAULT_SETTINGS.colorWeight,
               backgroundColor: DEFAULT_SETTINGS.backgroundColor,
               transparencyThreshold: DEFAULT_SETTINGS.transparencyThreshold,
               device: DEFAULT_SETTINGS.device,

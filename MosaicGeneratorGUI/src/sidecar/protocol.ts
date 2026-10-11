@@ -13,6 +13,8 @@ export interface MosaicOptions {
   matchWidth?: number;
   matchCandidates?: number;
   labSsd?: boolean;
+  /** Detail match only: how much more average color counts on flat tiles. 0 is off. */
+  colorWeight?: number;
   deepZoom?: boolean;
   /** Hex colour like "FFFFFF" or "#FFFFFF". */
   backgroundColor?: string;
