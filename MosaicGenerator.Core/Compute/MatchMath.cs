@@ -6,6 +6,22 @@ namespace MosaicGenerator.Core.Compute;
 /// </summary>
 public static class MatchMath
 {
+    // Divides CIEDE2000 before ColorTerm squares it, to put it on the scale of patch SSD
+    // (pixel values 0..1): a clear Color difference of 10 becomes 0.2.
+    private const float DeltaEScale = 50f;
+
+    /// <summary>
+    /// The Color term added to a patch's SSD: <paramref name="factor"/> times the squared
+    /// CIEDE2000 difference between the tile's and the card's average Color (both LAB), scaled
+    /// by <see cref="DeltaEScale"/>. Both backends call this, so they add it in exactly the same way.
+    /// </summary>
+    public static float ColorTerm(
+        float factor, float tileL, float tileA, float tileB, float cardL, float cardA, float cardB)
+    {
+        float difference = CieDe2000(tileL, tileA, tileB, cardL, cardA, cardB) / DeltaEScale;
+        return factor * difference * difference;
+    }
+
     // CIEDE2000 implemented with float arithmetic, so it also runs inside GPU kernels.
     public static float CieDe2000(float l1, float a1, float b1, float l2, float a2, float b2)
     {

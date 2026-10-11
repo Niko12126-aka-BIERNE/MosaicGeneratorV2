@@ -52,6 +52,7 @@ public sealed class CpuBackend : IMatchBackend
 
     public int[] MatchPatches(
         float[] cardPatches, float[] tilePatches, int[] candidates,
+        float[] cardColors, float[] tileColors,
         int tileCount, int candidatesPerTile, int valuesPerPatch,
         Action<double>? progress, CancellationToken ct)
     {
@@ -62,6 +63,11 @@ public sealed class CpuBackend : IMatchBackend
         {
             int tileBase      = ti * valuesPerPatch;
             int candidateBase = ti * candidatesPerTile;
+
+            float tileL       = tileColors[ti * 4];
+            float tileA       = tileColors[ti * 4 + 1];
+            float tileB       = tileColors[ti * 4 + 2];
+            float colorFactor = tileColors[ti * 4 + 3];
 
             int   bestCard = candidates[candidateBase];
             float bestDist = float.MaxValue;
@@ -77,6 +83,9 @@ public sealed class CpuBackend : IMatchBackend
                     float diff = tilePatches[tileBase + p] - cardPatches[cardBase + p];
                     dist += diff * diff;
                 }
+
+                dist += MatchMath.ColorTerm(colorFactor, tileL, tileA, tileB,
+                    cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]);
 
                 if (dist < bestDist)
                 {

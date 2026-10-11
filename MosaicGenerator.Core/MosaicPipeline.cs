@@ -54,7 +54,7 @@ public static class MosaicPipeline
         report.Log($"  Card data     : {cardDataPath}");
         report.Log($"  Cards per row : {options.CardsPerRow}");
         report.Log($"  Card width    : {options.CardWidth}px");
-        report.Log($"  Match mode    : {(options.PatchMatch ? $"Patch match ({(options.LabSsd ? "LAB" : "RGB")} SSD, {options.MatchWidth}px wide, top {options.MatchCandidates} candidates)" : "Colour match (CIEDE2000)")}");
+        report.Log($"  Match mode    : {(options.PatchMatch ? $"Patch match ({(options.LabSsd ? "LAB" : "RGB")} SSD, {options.MatchWidth}px wide, top {options.MatchCandidates} candidates{(options.ColorWeight > 0 ? $", Color weight {options.ColorWeight}" : "")})" : "Colour match (CIEDE2000)")}");
         report.Log($"  Output mode   : {(options.DeepZoom ? "Deep Zoom" : "PNG")}");
         report.Log($"  Device        : {options.Device}");
         report.Log($"  Background    : #{background.ToHex()[..6]} (used to flatten transparency for matching)");
@@ -175,7 +175,7 @@ public static class MosaicPipeline
             sw.Restart();
             tileCardIndices = PatchMatcher.Match(
                 backend, cards, inputImage, cardFolderPath,
-                cols, rows, matchWidth, matchHeight, options.MatchCandidates, options.LabSsd, background,
+                cols, rows, matchWidth, matchHeight, options.MatchCandidates, options.LabSsd, options.ColorWeight, background,
                 report, ct);
             report.Log($"  Done in {sw.ElapsedMilliseconds}ms");
         }

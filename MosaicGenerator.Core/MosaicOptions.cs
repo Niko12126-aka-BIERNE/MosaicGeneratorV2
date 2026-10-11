@@ -20,6 +20,20 @@ public sealed record MosaicOptions
     public int  MatchWidth      { get; init; } = 64;
     public int  MatchCandidates { get; init; } = 500;
     public bool LabSsd          { get; init; } = false;
+
+    /// <summary>
+    /// Patch matching only: how much more a card's average Color counts on flat tiles, where
+    /// plain SSD tends to pick a plain card of the wrong Color. 0 is off; see <see cref="PatchMatcher.Match"/>.
+    /// </summary>
+    public float ColorWeight    { get; init; } = 0;
+
+    /// <summary>
+    /// The <see cref="ColorWeight"/> to use when it's turned on without a value. Found by testing:
+    /// flat areas get nearly the Color accuracy of Color matching, while text and edges keep
+    /// almost all their detail. Higher values trade a little more detail for Color.
+    /// </summary>
+    public const float RecommendedColorWeight = 4;
+
     public bool DeepZoom        { get; init; } = false;
 
     /// <summary>Background used to flatten transparent pixels for matching only.</summary>
@@ -66,6 +80,8 @@ public sealed record MosaicOptions
                 errors.Add("Match width must be at least 1 pixel.");
             if (MatchCandidates < 1)
                 errors.Add("Match candidates must be at least 1.");
+            if (!(ColorWeight >= 0) || float.IsInfinity(ColorWeight))
+                errors.Add("Color weight must be 0 or more.");
         }
 
         if (TransparencyThreshold is < 0 or > 100)

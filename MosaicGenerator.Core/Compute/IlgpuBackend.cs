@@ -29,7 +29,8 @@ public sealed class IlgpuBackend : IMatchBackend
         ArrayView1D<float, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>,
         int, int, int>? _colorKernel;
     private Action<Index1D, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
-        ArrayView1D<int, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>,
+        ArrayView1D<int, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>, ArrayView1D<float, Stride1D.Dense>,
+        ArrayView1D<float, Stride1D.Dense>, ArrayView1D<int, Stride1D.Dense>,
         int, int, int, int, int>? _patchKernel;
 
     /// <summary>Starts <paramref name="device"/>. Takes ownership of <paramref name="context"/>.</summary>
@@ -76,18 +77,23 @@ public sealed class IlgpuBackend : IMatchBackend
 
     public int[] MatchPatches(
         float[] cardPatches, float[] tilePatches, int[] candidates,
+        float[] cardColors, float[] tileColors,
         int tileCount, int candidatesPerTile, int valuesPerPatch,
         Action<double>? progress, CancellationToken ct)
     {
         using var deviceCards      = _accelerator.Allocate1D<float>(cardPatches.Length);
         using var deviceTiles      = _accelerator.Allocate1D<float>(tilePatches.Length);
         using var deviceCandidates = _accelerator.Allocate1D<int>(candidates.Length);
+        using var deviceCardColors = _accelerator.Allocate1D<float>(cardColors.Length);
+        using var deviceTileColors = _accelerator.Allocate1D<float>(tileColors.Length);
         using var deviceBestDists  = _accelerator.Allocate1D<float>(tileCount);
         using var deviceBestCards  = _accelerator.Allocate1D<int>(tileCount);
 
         deviceCards.CopyFromCPU(cardPatches);
         deviceTiles.CopyFromCPU(tilePatches);
         deviceCandidates.CopyFromCPU(candidates);
+        deviceCardColors.CopyFromCPU(cardColors);
+        deviceTileColors.CopyFromCPU(tileColors);
 
         if (_patchKernel == null)
         {
@@ -98,13 +104,15 @@ public sealed class IlgpuBackend : IMatchBackend
                 ArrayView1D<float, Stride1D.Dense>,
                 ArrayView1D<int,   Stride1D.Dense>,
                 ArrayView1D<float, Stride1D.Dense>,
+                ArrayView1D<float, Stride1D.Dense>,
+                ArrayView1D<float, Stride1D.Dense>,
                 ArrayView1D<int,   Stride1D.Dense>,
                 int, int, int, int, int>(PatchKernel);
         }
 
         RunInSlices(tileCount, candidatesPerTile, progress, ct, (tileOffset, tiles, kStart, kEnd) =>
             _patchKernel(tiles, deviceCards.View, deviceTiles.View, deviceCandidates.View,
-                deviceBestDists.View, deviceBestCards.View,
+                deviceCardColors.View, deviceTileColors.View, deviceBestDists.View, deviceBestCards.View,
                 candidatesPerTile, valuesPerPatch, tileOffset, kStart, kEnd));
 
         return deviceBestCards.GetAsArray1D();
@@ -200,13 +208,15 @@ public sealed class IlgpuBackend : IMatchBackend
     }
 
     // One thread per tile of the batch starting at tileOffset. Goes through this tile's
-    // pre-selected candidates [kStart, kEnd), accumulates float SSD, and keeps the minimum,
-    // continuing from the best match the previous slice stored for its tile.
+    // pre-selected candidates [kStart, kEnd), scores each by float SSD plus the Color term,
+    // and keeps the minimum, continuing from the best match the previous slice stored.
     private static void PatchKernel(
         Index1D                            index,
         ArrayView1D<float, Stride1D.Dense> cardPixels,
         ArrayView1D<float, Stride1D.Dense> tilePixels,
         ArrayView1D<int,   Stride1D.Dense> candidates,
+        ArrayView1D<float, Stride1D.Dense> cardColors,
+        ArrayView1D<float, Stride1D.Dense> tileColors,
         ArrayView1D<float, Stride1D.Dense> bestDists,
         ArrayView1D<int,   Stride1D.Dense> bestCards,
         int K,
@@ -218,6 +228,11 @@ public sealed class IlgpuBackend : IMatchBackend
         int ti            = index.X + tileOffset;
         int tileBase      = ti * matchPixels3;
         int candidateBase = ti * K;
+
+        float tileL       = tileColors[ti * 4];
+        float tileA       = tileColors[ti * 4 + 1];
+        float tileB       = tileColors[ti * 4 + 2];
+        float colorFactor = tileColors[ti * 4 + 3];
 
         int   bestCard = kStart == 0 ? candidates[candidateBase] : bestCards[ti];
         float bestDist = kStart == 0 ? float.MaxValue : bestDists[ti];
@@ -233,6 +248,9 @@ public sealed class IlgpuBackend : IMatchBackend
                 float diff = tilePixels[tileBase + p] - cardPixels[cardBase + p];
                 dist += diff * diff;
             }
+
+            dist += MatchMath.ColorTerm(colorFactor, tileL, tileA, tileB,
+                cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]);
 
             if (dist < bestDist)
             {

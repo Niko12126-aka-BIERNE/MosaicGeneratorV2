@@ -1,3 +1,4 @@
+using System.Globalization;
 using MosaicGenerator.Core;
 using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
@@ -34,6 +35,7 @@ if (args.Length < 2)
     Console.WriteLine("  --match-width <n>      Patch matching resolution in pixels (default: 64) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --match-candidates <n> Top-K candidate cards per tile for patch matching (default: 500) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --lab-ssd              Use perceptually uniform LAB SSD instead of RGB SSD (slower, better colors and contrast in some scenarios)");
+    Console.WriteLine($"  --color-weight [n]     Make Color count more on flat tiles in patch matching (off by default; without a value: {MosaicOptions.RecommendedColorWeight}) [better Color in flat areas and gradients, higher values cost a little contrast]");
     Console.WriteLine("  --deep-zoom            Generate Deep Zoom tiles + HTML viewer instead of PNG (great for large images, that would be too large for a single PNG)");
     Console.WriteLine("  --background-color <hex>  Background to flatten transparent pixels onto, e.g. FFFFFF (default: black)");
     Console.WriteLine("  --transparency-threshold <pct>  Tiles more transparent than this are left blank in the output (default: 70)");
@@ -50,6 +52,7 @@ bool patchMatch       = false;
 int matchWidth        = 64;
 int matchCandidates   = 500;
 bool labSsd           = false;
+float colorWeight     = 0;
 bool deepZoom         = false;
 Color background      = Color.Black;
 int transparencyThreshold = 70;
@@ -73,6 +76,16 @@ for (int i = optStart; i < args.Length; i++)
         case "--match-width":       matchWidth      = int.Parse(args[++i]); break;
         case "--match-candidates":  matchCandidates = int.Parse(args[++i]); break;
         case "--lab-ssd":           labSsd          = true;                 break;
+        case "--color-weight":
+            // The value is optional: "--color-weight" alone uses the recommended weight.
+            if (i + 1 < args.Length && float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out float weight))
+            {
+                colorWeight = weight;
+                i++;
+            }
+            else
+                colorWeight = MosaicOptions.RecommendedColorWeight;
+            break;
         case "--deep-zoom":         deepZoom        = true;                 break;
         case "--background-color": background      = ImageIO.ParseBackgroundColor(args[++i]); break;
         case "--transparency-threshold": transparencyThreshold = int.Parse(args[++i]); break;
@@ -126,6 +139,7 @@ var options = new MosaicOptions
     MatchWidth            = matchWidth,
     MatchCandidates       = matchCandidates,
     LabSsd                = labSsd,
+    ColorWeight           = colorWeight,
     DeepZoom              = deepZoom,
     Background            = background,
     TransparencyThreshold = transparencyThreshold,

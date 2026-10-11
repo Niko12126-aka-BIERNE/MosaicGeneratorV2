@@ -18,10 +18,12 @@ public sealed class FallbackBackend(IMatchBackend primary, ProgressReporter? log
 
     public int[] MatchPatches(
         float[] cardPatches, float[] tilePatches, int[] candidates,
+        float[] cardColors, float[] tileColors,
         int tileCount, int candidatesPerTile, int valuesPerPatch,
         Action<double>? progress, CancellationToken ct) =>
         Run(backend => backend.MatchPatches(
-            cardPatches, tilePatches, candidates, tileCount, candidatesPerTile, valuesPerPatch, progress, ct));
+            cardPatches, tilePatches, candidates, cardColors, tileColors,
+            tileCount, candidatesPerTile, valuesPerPatch, progress, ct));
 
     private int[] Run(Func<IMatchBackend, int[]> step)
     {

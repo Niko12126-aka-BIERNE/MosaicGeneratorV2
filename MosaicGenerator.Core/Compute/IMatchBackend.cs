@@ -45,12 +45,17 @@ public interface IMatchBackend : IDisposable
         Action<double>? progress, CancellationToken ct);
 
     /// <summary>
-    /// For each tile, the candidate card whose pixels differ least (sum of squared differences).
+    /// For each tile, the candidate card with the lowest score: the sum of squared differences
+    /// of their pixels, plus a Color term (see <see cref="MatchMath.ColorTerm"/>).
     /// Patches are <paramref name="valuesPerPatch"/> floats each; tile t's candidates are
     /// <c>candidates[t * candidatesPerTile ..]</c>, indices into the card patches.
+    /// <paramref name="cardColors"/> holds each card's average Color in LAB (3 floats per card),
+    /// and <paramref name="tileColors"/> each tile's average Color in LAB followed by the factor
+    /// its Color term is multiplied by (4 floats per tile; a factor of 0 leaves plain SSD).
     /// </summary>
     int[] MatchPatches(
         float[] cardPatches, float[] tilePatches, int[] candidates,
+        float[] cardColors, float[] tileColors,
         int tileCount, int candidatesPerTile, int valuesPerPatch,
         Action<double>? progress, CancellationToken ct);
 }
