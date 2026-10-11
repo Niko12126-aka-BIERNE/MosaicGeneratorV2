@@ -306,24 +306,22 @@ public static class PatchMatcher
     }
 
     // CPU candidate pre-filter
+
+    // For every tile, the K cards whose average color is closest to the tile's, nearest first.
     private static int[] SelectTopKCandidates(
         float[] tileFloats, CardRecord[] cards,
         int tileCount, int matchPixels3, int K, bool labSsd,
         ProgressReporter? progress, CancellationToken ct)
     {
-        int cardCount   = cards.Length;
-        int matchPixels = matchPixels3 / 3;   // number of pixels per tile
+        int     cardCount   = cards.Length;
+        int     matchPixels = matchPixels3 / 3;   // number of pixels per tile
+        float[] cardLab     = CardColors(cards);   // contiguous, so the distance loop reads it quickly
 
         var candidateIndices = new int[tileCount * K];
 
         // Each thread gets its own working buffers to avoid allocations inside the loop.
         var distBuf = new ThreadLocal<float[]>(() => new float[cardCount]);
-        var idxBuf  = new ThreadLocal<int[]>(() =>
-        {
-            var arr = new int[cardCount];
-            for (int i = 0; i < cardCount; i++) arr[i] = i;
-            return arr;
-        });
+        var idxBuf  = new ThreadLocal<int[]>(() => new int[cardCount]);
 
         int done = 0;
 
@@ -337,26 +335,63 @@ public static class PatchMatcher
 
             for (int c = 0; c < cardCount; c++)
             {
-                float dL = tL - cards[c].L;
-                float dA = tA - cards[c].A;
-                float dB = tB - cards[c].B;
+                float dL = tL - cardLab[c * 3];
+                float dA = tA - cardLab[c * 3 + 1];
+                float dB = tB - cardLab[c * 3 + 2];
                 dists[c] = dL * dL + dA * dA + dB * dB;
+                idxs[c]  = c;
             }
 
-            // Sort both arrays together so the K smallest distances end up first.
-            Array.Sort(dists, idxs, 0, cardCount);
+            // Move the K smallest distances to the front without ordering the rest, then
+            // order just those K. Much less work than sorting every card.
+            SelectSmallest(dists, idxs, cardCount, K);
+            Array.Sort(dists, idxs, 0, K);
 
             // Write the top-K card indices into the output.
-            int destBase = ti * K;
-            for (int k = 0; k < K; k++)
-                candidateIndices[destBase + k] = idxs[k];
-
-            // Reset the index buffer for the next tile this thread will process.
-            for (int c = 0; c < cardCount; c++) idxs[c] = c;
+            Array.Copy(idxs, 0, candidateIndices, ti * K, K);
 
             progress?.Fraction(0.3 + 0.1 * Interlocked.Increment(ref done) / tileCount);
         });
 
         return candidateIndices;
+    }
+
+    // Rearranges keys[0..count), and items alongside, so the k smallest keys come first, in no
+    // particular order (quickselect: like quicksort, but only the side holding position k - 1
+    // is partitioned further).
+    private static void SelectSmallest(float[] keys, int[] items, int count, int k)
+    {
+        if (k >= count)
+            return;
+
+        int target = k - 1;
+        int lo = 0, hi = count - 1;
+
+        while (lo < hi)
+        {
+            // Median of the first, middle and last key as the pivot, which avoids the slow
+            // worst case on keys that are already (nearly) in order.
+            float a = keys[lo], b = keys[lo + (hi - lo) / 2], c = keys[hi];
+            float pivot = Math.Max(Math.Min(a, b), Math.Min(Math.Max(a, b), c));
+
+            int i = lo, j = hi;
+            while (i <= j)
+            {
+                while (keys[i] < pivot) i++;
+                while (keys[j] > pivot) j--;
+                if (i <= j)
+                {
+                    (keys[i], keys[j])   = (keys[j], keys[i]);
+                    (items[i], items[j]) = (items[j], items[i]);
+                    i++;
+                    j--;
+                }
+            }
+
+            // Now keys[lo..j] <= pivot <= keys[i..hi], and anything in between equals pivot.
+            if (target <= j)      hi = j;
+            else if (target >= i) lo = i;
+            else                  return;
+        }
     }
 }
