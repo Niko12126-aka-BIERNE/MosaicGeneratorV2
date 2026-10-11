@@ -49,7 +49,7 @@ public static class Handlers
         return new CardFolderInfoResult(
             ImageCount:  count,
             AspectRatio: count > 0 ? CardDatabase.SampleAspectRatio(folder) : null,
-            HasCache:    File.Exists(Path.Combine(folder, "allCardLabData.json")));
+            HasCache:    CardDatabase.HasColorData(folder));
     }
 
     private static ImageInfoResult ImageInfo(PathRequest request)

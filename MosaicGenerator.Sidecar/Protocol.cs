@@ -125,7 +125,7 @@ public sealed record FailedEvent(string Error) : Message("failed");
 public sealed record SystemInfoResult(IReadOnlyList<DeviceInfo> Devices);
 
 /// <param name="AspectRatio">Card height / width, or null when the folder has no images.</param>
-/// <param name="HasCache">Whether allCardLabData.json exists, i.e. this folder was used before.</param>
+/// <param name="HasCache">Whether this folder was used before, so its cards have been analysed.</param>
 public sealed record CardFolderInfoResult(int ImageCount, float? AspectRatio, bool HasCache);
 
 public sealed record ImageInfoResult(int Width, int Height);

@@ -25,9 +25,9 @@ those tiles, either by matching average color or by matching actual patch conten
     image in memory (so output size is limited only by disk space).
   - Deep Zoom tiles + an `index.html` viewer ([OpenSeadragon](https://openseadragon.github.io/))
     for mosaics too large to view or export as one flat image.
-- **Incremental card database**: each card's average color is cached to
-  `allCardLabData.json` in the card folder, so only newly added cards are reprocessed
-  on subsequent runs.
+- **Incremental card database**: each card's average color is remembered in the app's own
+  data folder (see [Data the app keeps](#data-the-app-keeps)), so only newly added cards are
+  analysed on later runs. Nothing is written to the card folder.
 
 ## Download
 
@@ -50,6 +50,23 @@ run this once in Terminal, which removes the download mark macOS checks:
 ```sh
 xattr -cr "/Applications/Mosaic Generator.app"
 ```
+
+### Data the app keeps
+
+The app and the command-line tool remember each card folder's card colors, so the next run
+doesn't have to analyse every card again. This data is kept in one folder, never next to your
+own files:
+
+- **Windows**: `%LOCALAPPDATA%\com.mosaicgenerator.gui`
+- **macOS**: `~/Library/Application Support/com.mosaicgenerator.gui`
+- **Linux**: `~/.local/share/com.mosaicgenerator.gui`
+
+Deleting it is always safe; it's rebuilt when needed. On Windows, tick **Delete the
+application data** when uninstalling to remove it. On macOS and Linux, delete the folder by
+hand after removing the app.
+
+Earlier versions stored this data as `allCardLabData.json` inside the card folder. The first
+time such a folder is used, the file is moved into the data folder above.
 
 To build the app or the command-line tool yourself, read on.
 
@@ -96,7 +113,7 @@ MosaicGeneratorCLI.exe --list-devices
 | Argument         | Description |
 |------------------|-------------|
 | `<input-image>`  | Path to the source image to recreate as a mosaic. |
-| `<card-folder>`  | Path to the folder of tile/card images. A cache file (`allCardLabData.json`) is created here on first run. |
+| `<card-folder>`  | Path to the folder of tile/card images. Nothing is written to it; the card colors are remembered in the app's data folder (see [Data the app keeps](#data-the-app-keeps)). |
 | `[output]`       | Optional output path. For PNG mode, a path to a `.png` file; for Deep Zoom mode, a path to an output folder. If omitted, defaults to `<input-name>_Mosaic.png` (or a numbered variant if that already exists) in the current directory. |
 
 ### Options

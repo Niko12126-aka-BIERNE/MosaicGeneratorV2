@@ -58,7 +58,7 @@ export interface CardFolderInfo {
   imageCount: number;
   /** Card height / width. Missing when the folder has no images. */
   aspectRatio?: number;
-  /** Whether this folder has been used before (allCardLabData.json exists). */
+  /** Whether this folder has been used before, so its cards have been analysed. */
   hasCache: boolean;
 }
 

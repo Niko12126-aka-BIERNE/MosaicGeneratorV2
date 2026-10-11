@@ -12,43 +12,81 @@ public static class CardDatabase
     private static readonly HashSet<string> ImageExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp" };
 
+    /// <summary>The color data's file name inside a card folder's data folder (see <see cref="AppData"/>).</summary>
+    private const string ColorDataFileName = "cardColors.json";
+
+    /// <summary>Where earlier versions kept the color data: in the card folder itself.</summary>
+    private const string LegacyFileName = "allCardLabData.json";
+
+    /// <summary>Where the color data for <paramref name="cardFolderPath"/> is kept.</summary>
+    public static string ColorDataPath(string cardFolderPath) =>
+        Path.Combine(AppData.CardFolderData(cardFolderPath), ColorDataFileName);
+
     /// <summary>
-    /// Loads card average-color data from <paramref name="jsonPath"/>.
+    /// Whether <paramref name="cardFolderPath"/> has been used before: it has color data, or an
+    /// old <c>allCardLabData.json</c> that will be imported. If not, every card gets analysed once.
+    /// </summary>
+    public static bool HasColorData(string cardFolderPath) =>
+        File.Exists(ColorDataPath(cardFolderPath)) ||
+        File.Exists(Path.Combine(cardFolderPath, LegacyFileName));
+
+    /// <summary>
+    /// Loads the average color of every card in <paramref name="cardFolderPath"/>, from the
+    /// color data kept in the app's data folder (<see cref="ColorDataPath"/>).
     /// <list type="bullet">
-    ///   <item>If the JSON doesn't exist it is created from scratch.</item>
-    ///   <item>If it exists but is missing entries for cards found in
-    ///         <paramref name="cardFolderPath"/>, only those new cards are
-    ///         processed and the JSON is updated in place.</item>
-    ///   <item>If it is already complete, the data is returned as-is.</item>
+    ///   <item>Cards without data yet are analysed, and their data is added and saved.</item>
+    ///   <item>If the card folder still has an <c>allCardLabData.json</c> from an earlier
+    ///         version, its data is imported once, and the file is deleted from the card
+    ///         folder after the data has been saved in the app's data folder.</item>
     /// </list>
-    /// If cancelled while processing new cards, the cards finished so far are still
-    /// saved to the JSON, so the next run doesn't have to redo them.
+    /// If cancelled while analysing new cards, the cards finished so far are still saved,
+    /// so the next run doesn't have to redo them.
     /// </summary>
     public static CardRecord[] LoadOrUpdate(
-        string jsonPath, string cardFolderPath, Color background,
+        string cardFolderPath, Color background,
         ProgressReporter? progress = null, CancellationToken ct = default)
     {
-        // Load whatever is already cached
+        string dataPath   = ColorDataPath(cardFolderPath);
+        string legacyPath = Path.Combine(cardFolderPath, LegacyFileName);
+
+        // Load whatever is already known
         var existing = new Dictionary<string, RawCard>(StringComparer.OrdinalIgnoreCase);
 
-        if (File.Exists(jsonPath))
+        if (File.Exists(dataPath))
         {
-            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var raw = JsonSerializer.Deserialize<RawCard[]>(
-                          File.ReadAllText(jsonPath), opts) ?? [];
-            foreach (var card in raw)
+            foreach (var card in ReadColorData(dataPath))
                 existing[card.FileName] = card;
-            progress?.Log($"  Loaded {existing.Count} existing entries from JSON.");
+            progress?.Log($"  Loaded {existing.Count} existing entries.");
         }
-        else
+
+        // Earlier versions kept the color data in the card folder. Import it once, so the cards
+        // don't have to be analysed again; the file is deleted there once the data is saved here.
+        bool importedLegacy = false;
+        if (File.Exists(legacyPath))
         {
-            progress?.Log("  No JSON found — will build it from scratch.");
+            try
+            {
+                int imported = 0;
+                foreach (var card in ReadColorData(legacyPath))
+                    if (existing.TryAdd(card.FileName, card))
+                        imported++;
+                importedLegacy = true;
+                progress?.Log($"  Imported {imported} entries from {LegacyFileName} in the card folder.");
+            }
+            catch (Exception ex)
+            {
+                // Left in place: it isn't ours to delete if it isn't what we expect.
+                progress?.Log($"  [WARN] Couldn't read {LegacyFileName} in the card folder, so it was left there: {ex.Message}");
+            }
         }
+
+        if (existing.Count == 0)
+            progress?.Log("  No card data yet — every card will be analysed once.");
 
         // Discover image files on disk
         string[] diskFiles = FindCardImages(cardFolderPath);
 
-        // Work out which cards are new (not yet in the JSON)
+        // Work out which cards are new (no data yet)
         string[] toProcess = diskFiles
             .Where(f => !existing.ContainsKey(Path.GetFileName(f)))
             .ToArray();
@@ -94,21 +132,31 @@ public static class CardDatabase
                 foreach (var (name, card) in newEntries)
                     existing[name] = card;
 
-                // Ensure the target directory exists before writing
-                string? dir = Path.GetDirectoryName(jsonPath);
-                if (!string.IsNullOrEmpty(dir))
-                    Directory.CreateDirectory(dir);
-
-                var serOpts = new JsonSerializerOptions { WriteIndented = false };
-                File.WriteAllText(jsonPath,
-                    JsonSerializer.Serialize(existing.Values.ToArray(), serOpts));
-
-                progress?.Log($"  JSON saved — {existing.Count} total entries.");
+                SaveColorData(cardFolderPath, dataPath, existing.Values);
+                progress?.Log($"  Card data saved — {existing.Count} total entries.");
             }
+        }
+        else if (importedLegacy)
+        {
+            SaveColorData(cardFolderPath, dataPath, existing.Values);
+            progress?.Log($"  Card data saved — {existing.Count} total entries.");
         }
         else
         {
             progress?.Log("  Card database is up to date.");
+        }
+
+        if (importedLegacy)
+        {
+            try
+            {
+                File.Delete(legacyPath);
+                progress?.Log($"  Removed {LegacyFileName} from the card folder (its data is now kept by the app).");
+            }
+            catch (Exception ex)
+            {
+                progress?.Log($"  [WARN] Couldn't remove {LegacyFileName} from the card folder: {ex.Message}");
+            }
         }
 
         // Return only entries whose image file is present on disk
@@ -202,7 +250,17 @@ public static class CardDatabase
         return ColorMath.RgbToLab(avgR, avgG, avgB);
     }
 
-    // JSON shape (mirrors the existing file format exactly)
+    private static RawCard[] ReadColorData(string path) =>
+        JsonSerializer.Deserialize<RawCard[]>(
+            File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+
+    private static void SaveColorData(string cardFolderPath, string dataPath, IEnumerable<RawCard> cards)
+    {
+        AppData.EnsureCardFolderData(cardFolderPath);
+        AppData.WriteAllTextSafely(dataPath, JsonSerializer.Serialize(cards.ToArray()));
+    }
+
+    // JSON shape (the same format earlier versions wrote to allCardLabData.json)
     private class RawCard
     {
         public string FileName { get; set; } = "";

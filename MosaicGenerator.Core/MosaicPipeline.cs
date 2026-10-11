@@ -43,7 +43,7 @@ public static class MosaicPipeline
         var sw         = new Stopwatch();
 
         string cardFolderPath = options.CardFolderPath;
-        string cardDataPath   = Path.Combine(cardFolderPath, "allCardLabData.json");
+        string cardDataPath   = CardDatabase.ColorDataPath(cardFolderPath);
         Color  background     = options.Background;
 
         // Configuration summary
@@ -82,7 +82,7 @@ public static class MosaicPipeline
         // Card database
         report.Log("Loading card database...");
         sw.Restart();
-        var cards = CardDatabase.LoadOrUpdate(cardDataPath, cardFolderPath, background, report, ct);
+        var cards = CardDatabase.LoadOrUpdate(cardFolderPath, background, report, ct);
         report.Log($"  {cards.Length} cards ready in {sw.ElapsedMilliseconds}ms");
         report.Log("");
 
