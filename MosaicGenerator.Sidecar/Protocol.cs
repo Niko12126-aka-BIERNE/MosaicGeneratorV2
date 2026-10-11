@@ -39,7 +39,7 @@ public sealed record OutputExistsRequest(string? OutputPath, bool DeepZoom);
 
 /// <summary>
 /// Mosaic settings as the app sends them. Anything left out gets the engine's default.
-/// The background colour is a hex string like "FFFFFF" or "#FFFFFF". The device is "auto"
+/// The background color is a hex string like "FFFFFF" or "#FFFFFF". The device is "auto"
 /// or an id from systemInfo's device list.
 /// </summary>
 public sealed record OptionsDto(
@@ -63,7 +63,7 @@ public sealed record OptionsDto(
 
     /// <summary>
     /// Converts to engine options. Problems that stop the conversion itself (an unreadable
-    /// colour) are added to <paramref name="errors"/>; call <see cref="MosaicOptions.Validate"/>
+    /// color) are added to <paramref name="errors"/>; call <see cref="MosaicOptions.Validate"/>
     /// on the result for the rest.
     /// </summary>
     public MosaicOptions ToOptions(List<string> errors)
@@ -72,7 +72,7 @@ public sealed record OptionsDto(
         if (!string.IsNullOrWhiteSpace(BackgroundColor))
         {
             try   { background = ImageIO.ParseBackgroundColor(BackgroundColor); }
-            catch { errors.Add($"Background colour '{BackgroundColor}' is not a valid hex colour."); }
+            catch { errors.Add($"Background color '{BackgroundColor}' is not a valid hex color."); }
         }
 
         return new MosaicOptions

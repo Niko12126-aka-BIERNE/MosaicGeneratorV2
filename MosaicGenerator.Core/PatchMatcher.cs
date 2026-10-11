@@ -13,7 +13,7 @@ public static class PatchMatcher
     /// patch is the closest match using sum-of-squared-differences (SSD), computed on the
     /// device <paramref name="backend"/> represents.
     /// <para>
-    /// Before running full pixel SSD, a cheap pre-filter computes the average LAB colour of
+    /// Before running full pixel SSD, a cheap pre-filter computes the average LAB color of
     /// each tile and each card, then selects the closest <paramref name="topK"/> candidates
     /// per tile. Only those candidates are compared pixel by pixel, cutting the work
     /// dramatically while preserving match quality.
@@ -84,8 +84,8 @@ public static class PatchMatcher
         float[] tileFloats = ExtractTileFloats(
             inputImage, cols, rows, matchWidth, matchHeight, matchPixels3, (int)tileElemCount, labSsd, ct);
 
-        // CPU pre-filter: pick top-K candidates per tile by average LAB colour
-        progress?.Log("  Pre-filtering candidates by average colour...");
+        // CPU pre-filter: pick top-K candidates per tile by average LAB color
+        progress?.Log("  Pre-filtering candidates by average color...");
         int[] candidateIndices = SelectTopKCandidates(
             tileFloats, cards, tileCount, matchPixels3, effectiveK, labSsd, progress, ct);
         progress?.Log("  Pre-filter done.");

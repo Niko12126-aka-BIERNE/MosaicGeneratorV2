@@ -3,7 +3,7 @@
 /* dark: classes apply when <html> has the "dark" class (see src/theme.ts). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Native controls (inputs, scrollbars, the colour picker) follow the theme too. */
+/* Native controls (inputs, scrollbars, the color picker) follow the theme too. */
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 

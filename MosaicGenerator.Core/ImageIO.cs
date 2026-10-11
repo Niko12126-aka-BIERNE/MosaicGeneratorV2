@@ -6,7 +6,7 @@ namespace MosaicGenerator.Core;
 
 public static class ImageIO
 {
-    // Loads an image and flattens any transparency onto a solid background colour
+    // Loads an image and flattens any transparency onto a solid background color
     // before dropping to Rgb24. Without this, transparent pixels (commonly stored
     // as black with zero alpha) would be read as solid black once the alpha
     // channel is discarded, biasing matching towards dark cards.

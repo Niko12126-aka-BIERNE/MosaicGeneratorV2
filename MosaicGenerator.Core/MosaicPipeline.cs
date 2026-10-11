@@ -54,7 +54,7 @@ public static class MosaicPipeline
         report.Log($"  Card data     : {cardDataPath}");
         report.Log($"  Cards per row : {options.CardsPerRow}");
         report.Log($"  Card width    : {options.CardWidth}px");
-        report.Log($"  Match mode    : {(options.PatchMatch ? $"Patch match ({(options.LabSsd ? "LAB" : "RGB")} SSD, {options.MatchWidth}px wide, top {options.MatchCandidates} candidates{(options.ColorWeight > 0 ? $", Color weight {options.ColorWeight}" : "")})" : "Colour match (CIEDE2000)")}");
+        report.Log($"  Match mode    : {(options.PatchMatch ? $"Patch match ({(options.LabSsd ? "LAB" : "RGB")} SSD, {options.MatchWidth}px wide, top {options.MatchCandidates} candidates{(options.ColorWeight > 0 ? $", Color weight {options.ColorWeight}" : "")})" : "Color match (CIEDE2000)")}");
         report.Log($"  Output mode   : {(options.DeepZoom ? "Deep Zoom" : "PNG")}");
         report.Log($"  Device        : {options.Device}");
         report.Log($"  Background    : #{background.ToHex()[..6]} (used to flatten transparency for matching)");
@@ -145,18 +145,18 @@ public static class MosaicPipeline
         }
         else
         {
-            // Scale input to compact analysis resolution. 8 px per tile is enough for median colour
+            // Scale input to compact analysis resolution. 8 px per tile is enough for median color
             const int AnalysisPixelsPerTile = 8;
             int analysisWidth  = cols * AnalysisPixelsPerTile;
             int analysisHeight = rows * AnalysisPixelsPerTile;
 
-            report.Log("Scaling input image for colour analysis...");
+            report.Log("Scaling input image for color analysis...");
             sw.Restart();
             inputImage.Mutate(ctx => ctx.Resize(analysisWidth, analysisHeight));
             report.Log($"  Scaled to {analysisWidth}x{analysisHeight}px ({AnalysisPixelsPerTile}px/tile) in {sw.ElapsedMilliseconds}ms");
             report.Log("");
 
-            report.Log("Extracting tile colours...");
+            report.Log("Extracting tile colors...");
             sw.Restart();
             tileColors = TileExtractor.Extract(inputImage, cols, rows, AnalysisPixelsPerTile, AnalysisPixelsPerTile);
             report.Log($"  Done in {sw.ElapsedMilliseconds}ms");
@@ -181,7 +181,7 @@ public static class MosaicPipeline
         }
         else
         {
-            report.Log("Running colour matching...");
+            report.Log("Running color matching...");
             sw.Restart();
             tileCardIndices = ColorMatcher.Match(backend, cards, tileColors, layout.TileCount, report, ct);
             report.Log($"  Done in {sw.ElapsedMilliseconds}ms");

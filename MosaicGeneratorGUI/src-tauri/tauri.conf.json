@@ -40,7 +40,7 @@
     "homepage": "https://github.com/Niko12126-aka-BIERNE/MosaicGeneratorV2",
     "category": "GraphicsAndDesign",
     "shortDescription": "Turn a picture into a mosaic made of your own card images.",
-    "longDescription": "Mosaic Generator rebuilds a picture out of a folder of card images, matching each spot by colour or by detail. It runs on NVIDIA (CUDA) and AMD/Intel (OpenCL) graphics cards, or on the processor, and saves a PNG or a zoomable Deep Zoom viewer.",
+    "longDescription": "Mosaic Generator rebuilds a picture out of a folder of card images, matching each spot by color or by detail. It runs on NVIDIA (CUDA) and AMD/Intel (OpenCL) graphics cards, or on the processor, and saves a PNG or a zoomable Deep Zoom viewer.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

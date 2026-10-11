@@ -3,7 +3,7 @@
   <!-- Dark rounded background (neutral-900, matching the app's dark theme). -->
   <rect width="1024" height="1024" rx="200" fill="#171717"/>
 
-  <!-- 3x3 tiles. Each diagonal shares a colour, so together they read as a
+  <!-- 3x3 tiles. Each diagonal shares a color, so together they read as a
        blue-to-green gradient: a picture built from tiles. -->
   <g>
     <rect x="136" y="136" width="224" height="224" rx="40" fill="#2563eb"/>

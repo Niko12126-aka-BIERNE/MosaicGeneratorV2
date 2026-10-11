@@ -16,7 +16,7 @@ export interface MosaicOptions {
   /** Detail match only: how much more average color counts on flat tiles. 0 is off. */
   colorWeight?: number;
   deepZoom?: boolean;
-  /** Hex colour like "FFFFFF" or "#FFFFFF". */
+  /** Hex color like "FFFFFF" or "#FFFFFF". */
   backgroundColor?: string;
   transparencyThreshold?: number;
   /** "auto", or an `id` from SystemInfo.devices. */

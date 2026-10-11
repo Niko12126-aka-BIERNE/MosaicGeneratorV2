@@ -4,7 +4,7 @@ namespace MosaicGenerator.Core;
 
 public static class ColorMatcher
 {
-    // For every tile, finds the index of the closest card by CIEDE2000 colour distance.
+    // For every tile, finds the index of the closest card by CIEDE2000 color distance.
     // Returns an int[] of length tileCount where each element is an index into the cards array.
     // The distance calculation itself runs on whatever device the backend represents.
     public static int[] Match(

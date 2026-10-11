@@ -24,7 +24,7 @@ public sealed record DeviceInfo(string Id, string Name, DeviceKind Kind, long Me
 
 /// <summary>
 /// The number-crunching part of matching, the only part that differs between devices.
-/// Everything before it (loading card images, the colour pre-filter, flattening data into
+/// Everything before it (loading card images, the color pre-filter, flattening data into
 /// arrays) is the same for every device and lives in <see cref="ColorMatcher"/> and
 /// <see cref="PatchMatcher"/>.
 /// <para>

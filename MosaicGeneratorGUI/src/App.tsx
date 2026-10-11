@@ -243,7 +243,7 @@ export default function App() {
                 value={settings.patchMatch ? "detail" : "color"}
                 onChange={(value) => update({ patchMatch: value === "detail" })}
                 options={[
-                  { value: "color", title: "Colour match", description: "Fast. Picks each card by its average colour." },
+                  { value: "color", title: "Color match", description: "Fast. Picks each card by its average color." },
                   { value: "detail", title: "Detail match", description: "Slower. Compares what's in each card, so edges and shapes follow the image better." },
                 ]}
               />
@@ -442,7 +442,7 @@ function AdvancedSettings(props: {
               <NumberField value={settings.matchWidth} min={1} max={1024} suffix="px" onChange={(matchWidth) => update({ matchWidth })} />
             </div>
             <div>
-              <FieldLabel hint="How many of the closest-coloured cards are compared in detail for each spot. Higher can find better matches, but is slower.">
+              <FieldLabel hint="How many of the closest-colored cards are compared in detail for each spot. Higher can find better matches, but is slower.">
                 Cards compared per spot
               </FieldLabel>
               <NumberField value={settings.matchCandidates} min={1} max={100000} onChange={(matchCandidates) => update({ matchCandidates })} />
@@ -455,8 +455,8 @@ function AdvancedSettings(props: {
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Compare colours the way eyes see them</span>
-                <span className="block text-xs text-slate-500 dark:text-neutral-400">Slower, but can give better colours and contrast. (LAB colour space)</span>
+                <span className="font-medium">Compare colors the way eyes see them</span>
+                <span className="block text-xs text-slate-500 dark:text-neutral-400">Slower, but can give better colors and contrast. (LAB color space)</span>
               </span>
             </label>
             <label className="flex items-start gap-2 text-sm">
@@ -486,7 +486,7 @@ function AdvancedSettings(props: {
         )}
 
         <div>
-          <FieldLabel hint="Transparent parts of the source image are treated as this colour while matching. They stay transparent in the mosaic.">
+          <FieldLabel hint="Transparent parts of the source image are treated as this color while matching. They stay transparent in the mosaic.">
             Background for transparent areas
           </FieldLabel>
           <div className="flex items-center gap-2">

@@ -13,7 +13,7 @@ public static class CardDatabase
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp" };
 
     /// <summary>
-    /// Loads card average-colour data from <paramref name="jsonPath"/>.
+    /// Loads card average-color data from <paramref name="jsonPath"/>.
     /// <list type="bullet">
     ///   <item>If the JSON doesn't exist it is created from scratch.</item>
     ///   <item>If it exists but is missing entries for cards found in

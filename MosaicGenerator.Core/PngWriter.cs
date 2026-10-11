@@ -40,7 +40,7 @@ public static class PngWriter
         WriteBE32(data, 0, (uint)width);
         WriteBE32(data, 4, (uint)height);
         data[8]  = 8; // bit depth: 8 bits per channel
-        data[9]  = 6; // colour type: RGBA
+        data[9]  = 6; // color type: RGBA
         data[10] = 0; // compression: deflate (only valid value)
         data[11] = 0; // filter method: adaptive (only valid value)
         data[12] = 0; // interlace: none

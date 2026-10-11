@@ -31,7 +31,7 @@ if (args.Length < 2)
     Console.WriteLine("Options:");
     Console.WriteLine("  --cards-per-row <n>    Number of card columns  (default: 100)");
     Console.WriteLine("  --card-width <n>       Card width in pixels    (default: 160)");
-    Console.WriteLine("  --patch-match          Match tile patches instead of average colours");
+    Console.WriteLine("  --patch-match          Match tile patches instead of average colors");
     Console.WriteLine("  --match-width <n>      Patch matching resolution in pixels (default: 64) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --match-candidates <n> Top-K candidate cards per tile for patch matching (default: 500) [high values increase the VRAM consumption and processing time]");
     Console.WriteLine("  --lab-ssd              Use perceptually uniform LAB SSD instead of RGB SSD (slower, better colors and contrast in some scenarios)");
