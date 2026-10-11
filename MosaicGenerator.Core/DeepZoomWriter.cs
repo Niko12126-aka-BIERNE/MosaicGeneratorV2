@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
@@ -65,40 +66,81 @@ public static class DeepZoomWriter
     }
 
     // Max-level tile generation
+
+    // Buffers for one row of tiles each: one being filled while the others are saved.
+    // Saving a row's last few tiles leaves most threads idle, so with more than one row
+    // saving at a time those threads move on to the next row's tiles instead of waiting.
+    private const int RowBuffers = 3;
+
     private static void WriteMaxLevelTiles(
         string levelDir, int width, int height, IEnumerable<Image<Rgba32>> strips,
         ProgressReporter? progress, CancellationToken ct)
     {
-        var rowBuf  = new Rgba32[width * TileSize];
+        using var freeBuffers = new BlockingCollection<Rgba32[]>();
+        for (int i = 0; i < RowBuffers; i++)
+            freeBuffers.Add(new Rgba32[width * TileSize]);
+
+        var saving  = new List<Task>();
+        var rowBuf  = freeBuffers.Take();
         int yOffset = 0;
 
-        foreach (var strip in strips)
+        try
         {
-            using (strip)
+            foreach (var strip in strips)
             {
-                strip.ProcessPixelRows(accessor =>
+                using (strip)
                 {
-                    for (int y = 0; y < strip.Height; y++)
+                    strip.ProcessPixelRows(accessor =>
                     {
-                        ct.ThrowIfCancellationRequested();
-                        int fullY     = yOffset + y;
-                        int rowInTile = fullY % TileSize;
-
-                        accessor.GetRowSpan(y).CopyTo(rowBuf.AsSpan(rowInTile * width));
-
-                        if (rowInTile == TileSize - 1 || fullY == height - 1)
+                        for (int y = 0; y < strip.Height; y++)
                         {
-                            int tileRow  = fullY / TileSize;
-                            int rowCount = rowInTile + 1;
-                            SaveTileColumns(levelDir, rowBuf, width, tileRow, rowCount, ct);
-                        }
+                            ct.ThrowIfCancellationRequested();
+                            int fullY     = yOffset + y;
+                            int rowInTile = fullY % TileSize;
 
-                        progress?.Fraction(MaxLevelShare * (fullY + 1) / height);
-                    }
-                });
-                yOffset += strip.Height;
+                            accessor.GetRowSpan(y).CopyTo(rowBuf.AsSpan(rowInTile * width));
+
+                            if (rowInTile == TileSize - 1 || fullY == height - 1)
+                            {
+                                // Save this row of tiles in the background, and continue
+                                // with a free buffer (waiting for one if all are saving).
+                                var full     = rowBuf;
+                                int tileRow  = fullY / TileSize;
+                                int rowCount = rowInTile + 1;
+                                saving.Add(Task.Run(() =>
+                                {
+                                    try     { SaveTileColumns(levelDir, full, width, tileRow, rowCount, ct); }
+                                    finally { freeBuffers.Add(full); }
+                                }));
+
+                                rowBuf = freeBuffers.Take(ct);
+                                ThrowIfAnyFailed(saving);
+                            }
+
+                            progress?.Fraction(MaxLevelShare * (fullY + 1) / height);
+                        }
+                    });
+                    yOffset += strip.Height;
+                }
             }
+
+            foreach (var task in saving)
+                task.GetAwaiter().GetResult();   // rethrows a failed save's own exception
         }
+        catch
+        {
+            // Let the rows still saving finish first, so nothing is written to the folder
+            // after this returns (a cancelled run's folder gets deleted).
+            try { Task.WaitAll(saving.ToArray()); } catch { /* the first error is rethrown below */ }
+            throw;
+        }
+    }
+
+    private static void ThrowIfAnyFailed(List<Task> tasks)
+    {
+        foreach (var task in tasks)
+            if (task.IsFaulted || task.IsCanceled)
+                task.GetAwaiter().GetResult();
     }
 
     private static void SaveTileColumns(
