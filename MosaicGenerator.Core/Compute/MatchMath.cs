@@ -6,6 +6,15 @@ namespace MosaicGenerator.Core.Compute;
 /// </summary>
 public static class MatchMath
 {
+    /// <summary>
+    /// Patch SSD is summed over pixel values as bytes (0-255); this puts it on the 0-1 scale of
+    /// pixel values, which the color term and the color weight are tuned for.
+    /// </summary>
+    public const float SsdScale = 1f / (255f * 255f);
+
+    /// <summary>A candidate card's score for a tile: its scaled SSD plus the color term.</summary>
+    public static float PatchScore(long ssd, float colorTerm) => ssd * SsdScale + colorTerm;
+
     // Divides CIEDE2000 before ColorTerm squares it, to put it on the scale of patch SSD
     // (pixel values 0..1): a clear Color difference of 10 becomes 0.2.
     private const float DeltaEScale = 50f;

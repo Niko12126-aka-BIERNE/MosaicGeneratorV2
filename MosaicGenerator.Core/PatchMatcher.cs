@@ -1,7 +1,6 @@
 using MosaicGenerator.Core.Compute;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace MosaicGenerator.Core;
 
@@ -19,15 +18,16 @@ public static class PatchMatcher
     /// dramatically while preserving match quality.
     /// </para>
     /// <para>
-    /// Pixel values are stored as <c>float</c> in the [0, 1] range rather than raw bytes.
-    /// This avoids any ambiguity in how ILGPU handles byte-to-int sign extension in kernels,
-    /// and matches the type convention used by <see cref="ColorMatcher"/>.
+    /// Patches are stored as 3 bytes per pixel: R, G, B as they are, or L*, a*, b* scaled to
+    /// bytes with <paramref name="labSsd"/> (see <see cref="ToLabBytes"/>). That's a quarter of the
+    /// memory floats would take, the comparison reads a quarter as much, and its SSD is a whole
+    /// number, so every device computes exactly the same sum.
     /// </para>
     /// <para>
     /// SSD penalises every bit of detail a card has that the tile doesn't, so on flat tiles a
-    /// plain card of the wrong Color tends to beat a textured card of the right Color. With
+    /// plain card of the wrong color tends to beat a textured card of the right color. With
     /// <paramref name="colorWeight"/> above 0, the CIEDE2000 difference between the tile's and
-    /// the card's average Color (the same measure Color matching uses) is added to the score,
+    /// the card's average color (the same measure color matching uses) is added to the score,
     /// weighted by <paramref name="colorWeight"/> on a flat tile and fading out as the tile gets
     /// more detail (see <see cref="TileColors"/>). 0 leaves plain SSD.
     /// </para>
@@ -50,21 +50,22 @@ public static class PatchMatcher
         ProgressReporter? progress = null,
         CancellationToken ct = default)
     {
-        int matchPixels3 = matchWidth * matchHeight * 3;   // floats per card/tile
+        int matchPixels  = matchWidth * matchHeight;
+        int matchPixels3 = matchPixels * 3;   // bytes per card/tile
         int tileCount    = cols * rows;
         int effectiveK   = Math.Min(topK, cards.Length);
 
         // Guard: verify both buffers fit in .NET arrays
-        long cardElemCount = (long)cards.Length * matchPixels3;
-        long tileElemCount = (long)tileCount    * matchPixels3;
+        long cardBytes = (long)cards.Length * matchPixels3;
+        long tileBytes = (long)tileCount    * matchPixels3;
 
-        if (cardElemCount > Array.MaxLength)
+        if (cardBytes > Array.MaxLength)
             throw new InvalidOperationException(
-                $"Card buffer too large ({cardElemCount * 4 / 1024 / 1024} MB). " +
+                $"Card buffer too large ({cardBytes / 1024 / 1024} MB). " +
                 $"Reduce the number of cards or lower --match-width.");
-        if (tileElemCount > Array.MaxLength)
+        if (tileBytes > Array.MaxLength)
             throw new InvalidOperationException(
-                $"Tile buffer too large ({tileElemCount * 4 / 1024 / 1024} MB). " +
+                $"Tile buffer too large ({tileBytes / 1024 / 1024} MB). " +
                 $"Reduce --cards-per-row, --card-width, or lower --match-width.");
 
         progress?.Log($"  Device           : {backend.Device}");
@@ -72,31 +73,31 @@ public static class PatchMatcher
         progress?.Log($"  Candidates       : top {effectiveK} of {cards.Length} cards per tile");
         progress?.Log($"  Pixel metric     : {(labSsd ? "LAB SSD (perceptually uniform)" : "RGB SSD")}");
         progress?.Log($"  Color weight     : {(colorWeight > 0 ? $"{colorWeight} (on flat tiles, color counts up to {1 + colorWeight}x)" : "off")}");
-        progress?.Log($"  Card buffer      : {cardElemCount * 4 / 1024 / 1024} MB");
-        progress?.Log($"  Tile buffer      : {tileElemCount * 4 / 1024 / 1024} MB");
+        progress?.Log($"  Card buffer      : {cardBytes / 1024 / 1024} MB");
+        progress?.Log($"  Tile buffer      : {tileBytes / 1024 / 1024} MB");
 
         // Load all cards at match resolution
-        float[] cardFloats = LoadCardFloats(
-            cards, cardFolderPath, matchWidth, matchHeight, matchPixels3, (int)cardElemCount, labSsd, background,
-            progress, ct);
+        byte[] cardPatches = LoadCardPatches(
+            cards, cardFolderPath, matchWidth, matchHeight, labSsd, background, progress, ct);
 
         // Extract tile patches from the input image
-        float[] tileFloats = ExtractTileFloats(
-            inputImage, cols, rows, matchWidth, matchHeight, matchPixels3, (int)tileElemCount, labSsd, ct);
+        byte[] tilePatches = ExtractTilePatches(
+            inputImage, cols, rows, matchWidth, matchHeight, matchPixels3, (int)tileBytes, labSsd, ct);
 
         // CPU pre-filter: pick top-K candidates per tile by average LAB color
         progress?.Log("  Pre-filtering candidates by average color...");
         int[] candidateIndices = SelectTopKCandidates(
-            tileFloats, cards, tileCount, matchPixels3, effectiveK, labSsd, progress, ct);
+            tilePatches, cards, tileCount, matchPixels3, effectiveK, labSsd, progress, ct);
         progress?.Log("  Pre-filter done.");
 
         float[] cardColors = CardColors(cards);
-        float[] tileColors = TileColors(tileFloats, tileCount, matchPixels3, labSsd, colorWeight);
+        float[] tileColors = TileColors(tilePatches, tileCount, matchPixels3, labSsd, colorWeight);
 
         // Pixel comparison: per tile, SSD only against its K candidates
         progress?.Log($"  Matching {tileCount} tiles × {effectiveK} candidates — this may take a while...");
         int[] result = backend.MatchPatches(
-            cardFloats, tileFloats, candidateIndices, cardColors, tileColors, tileCount, effectiveK, matchPixels3,
+            cardPatches, tilePatches, candidateIndices, cardColors, tileColors,
+            tileCount, effectiveK, matchPixels, labSsd ? LabLightnessWeight : 1,
             fraction => progress?.Fraction(0.4 + 0.6 * fraction), ct);
         progress?.Log("  Done.");
         progress?.Fraction(1);
@@ -104,55 +105,60 @@ public static class PatchMatcher
         return result;
     }
 
+    // Patch bytes
+
+    // LAB as bytes: L* (0 to 100) scaled to 0-255; a* and b* (about -110 to 100 for real colors)
+    // shifted by 128. A lightness step is then about 0.4, below what the eye can tell apart.
+    private const float LabLightnessScale = 2.55f;
+    private const int   LabChromaOffset   = 128;
+
+    // In LAB, a lightness difference counts this many times in the SSD, as before: comparing
+    // L*/70 against a*/255 weighted a unit of L* 13.3 times a unit of a*; 2 * 2.55^2 = 13.0.
+    private const int LabLightnessWeight = 2;
+
+    private static void ToLabBytes(byte r, byte g, byte b, Span<byte> target)
+    {
+        var (l, a, bb) = ColorMath.RgbToLab(r, g, b);
+        target[0] = (byte)Math.Clamp((int)MathF.Round(l * LabLightnessScale), 0, 255);
+        target[1] = (byte)Math.Clamp((int)MathF.Round(a) + LabChromaOffset, 0, 255);
+        target[2] = (byte)Math.Clamp((int)MathF.Round(bb) + LabChromaOffset, 0, 255);
+    }
+
     // Card loading
 
-    // Every card at match resolution, as the floats the comparison uses. The scaled pixels come
-    // from CardPixelCache (only new or changed cards are opened and scaled); turning them into
-    // floats is quick and depends on labSsd, so it isn't cached.
-    private static float[] LoadCardFloats(
+    // Every card at match resolution. The scaled pixels come from CardPixelCache (only new or
+    // changed cards are opened and scaled) and are used as they are for RGB; for LAB they're
+    // converted in place, which is quick and depends on labSsd, so it isn't cached.
+    private static byte[] LoadCardPatches(
         CardRecord[] cards, string cardFolderPath,
-        int matchWidth, int matchHeight, int matchPixels3,
-        int totalElements, bool labSsd, Color background,
+        int matchWidth, int matchHeight, bool labSsd, Color background,
         ProgressReporter? progress, CancellationToken ct)
     {
         byte[] pixels = CardPixelCache.Load(
             cards, cardFolderPath, matchWidth, matchHeight, background,
             progress, fraction => progress?.Fraction(0.3 * fraction), ct);
 
-        float[] cardFloats = new float[totalElements];
-
-        Parallel.For(0, cards.Length, new ParallelOptions { CancellationToken = ct }, i =>
+        if (labSsd)
         {
-            int cardBase = i * matchPixels3;
-            for (int v = cardBase; v < cardBase + matchPixels3; v += 3)
+            int cardBytes = matchWidth * matchHeight * 3;
+            Parallel.For(0, cards.Length, new ParallelOptions { CancellationToken = ct }, i =>
             {
-                byte r = pixels[v], g = pixels[v + 1], b = pixels[v + 2];
-                if (labSsd)
-                {
-                    var (l, a, bb) = ColorMath.RgbToLab(r, g, b);
-                    cardFloats[v]     = l / 70f;   // L* weighted ~2 times more than chroma
-                    cardFloats[v + 1] = a / 255f;
-                    cardFloats[v + 2] = bb / 255f;
-                }
-                else
-                {
-                    cardFloats[v]     = r / 255f;
-                    cardFloats[v + 1] = g / 255f;
-                    cardFloats[v + 2] = b / 255f;
-                }
-            }
-        });
+                var card = pixels.AsSpan(i * cardBytes, cardBytes);
+                for (int v = 0; v < cardBytes; v += 3)
+                    ToLabBytes(card[v], card[v + 1], card[v + 2], card.Slice(v, 3));
+            });
+        }
 
-        return cardFloats;
+        return pixels;
     }
 
     // Input tile extraction
 
-    private static float[] ExtractTileFloats(
+    private static byte[] ExtractTilePatches(
         Image<Rgb24> image,
         int cols, int rows,
         int matchWidth, int matchHeight, int matchPixels3,
-        int totalElements, bool labSsd, CancellationToken ct)
+        int totalBytes, bool labSsd, CancellationToken ct)
     {
         // Copy input pixels to a flat array once for lock-free parallel reads.
         var inputPixels = new Rgb24[image.Width * image.Height];
@@ -162,7 +168,7 @@ public static class PatchMatcher
                 acc.GetRowSpan(y).CopyTo(inputPixels.AsSpan(y * image.Width, image.Width));
         });
 
-        float[] tileFloats = new float[totalElements];
+        byte[] tilePatches = new byte[totalBytes];
 
         Parallel.For(0, rows, new ParallelOptions { CancellationToken = ct }, row =>
         {
@@ -178,35 +184,33 @@ public static class PatchMatcher
                     int dstRowBase = tileBase + ty * matchWidth * 3;
                     for (int tx = 0; tx < matchWidth; tx++)
                     {
-                        Rgb24 px = inputPixels[srcRowBase + tx];
+                        Rgb24 px  = inputPixels[srcRowBase + tx];
+                        int   dst = dstRowBase + tx * 3;
                         if (labSsd)
                         {
-                            var (l, a, b) = ColorMath.RgbToLab(px.R, px.G, px.B);
-                            tileFloats[dstRowBase + tx * 3]     = l / 70f;   // L* weighted ~2 times more than chroma
-                            tileFloats[dstRowBase + tx * 3 + 1] = a / 255f;
-                            tileFloats[dstRowBase + tx * 3 + 2] = b / 255f;
+                            ToLabBytes(px.R, px.G, px.B, tilePatches.AsSpan(dst, 3));
                         }
                         else
                         {
-                            tileFloats[dstRowBase + tx * 3]     = px.R / 255f;
-                            tileFloats[dstRowBase + tx * 3 + 1] = px.G / 255f;
-                            tileFloats[dstRowBase + tx * 3 + 2] = px.B / 255f;
+                            tilePatches[dst]     = px.R;
+                            tilePatches[dst + 1] = px.G;
+                            tilePatches[dst + 2] = px.B;
                         }
                     }
                 }
             }
         });
 
-        return tileFloats;
+        return tilePatches;
     }
 
     // Color weighting
 
-    // How much detail (RMS deviation from the tile's average Color, in patch units) halves the
-    // Color weight's effect. Below it the tile counts as flat, well above it as detailed.
+    // How much detail (RMS deviation from the tile's average color, with values scaled to 0-1)
+    // halves the color weight's effect. Below it the tile counts as flat, well above it as detailed.
     private const float FlatDetail = 0.05f;
 
-    // Each card's average Color in LAB, 3 floats per card: the same values Color matching uses.
+    // Each card's average color in LAB, 3 floats per card: the same values color matching uses.
     private static float[] CardColors(CardRecord[] cards)
     {
         var colors = new float[cards.Length * 3];
@@ -219,34 +223,35 @@ public static class PatchMatcher
         return colors;
     }
 
-    // Per tile, 4 floats: its average Color in LAB, then the factor the backends multiply the
-    // Color term by (see MatchMath.ColorTerm). The factor is
+    // Per tile, 4 floats: its average color in LAB, then the factor the backends multiply the
+    // color term by (see MatchMath.ColorTerm). The factor is
     //   colorWeight / (1 + (detail / FlatDetail)^2) * pixels per patch
     // so it's colorWeight on a flat tile and fades smoothly as detail grows; the pixel count
     // puts it on the same scale as the SSD, which sums over every pixel. Nearly equal tiles
     // get nearly equal factors, so no visible seam appears where tiles change from flat to detailed.
     private static float[] TileColors(
-        float[] tileFloats, int tileCount, int matchPixels3, bool labSsd, float colorWeight)
+        byte[] tilePatches, int tileCount, int matchPixels3, bool labSsd, float colorWeight)
     {
         var tileColors  = new float[tileCount * 4];
         int matchPixels = matchPixels3 / 3;
+        int weight0     = labSsd ? LabLightnessWeight : 1;   // as in the SSD
 
         Parallel.For(0, tileCount, ti =>
         {
             int tileBase  = ti * matchPixels3;
-            var (r, g, b) = Average(tileFloats, tileBase, matchPixels3);
+            var (m0, m1, m2) = Average(tilePatches, tileBase, matchPixels3);
 
             double sumSquares = 0;
-            for (int p = 0; p < matchPixels3; p += 3)
+            for (int p = tileBase; p < tileBase + matchPixels3; p += 3)
             {
-                double dR = tileFloats[tileBase + p]     - r;
-                double dG = tileFloats[tileBase + p + 1] - g;
-                double dB = tileFloats[tileBase + p + 2] - b;
-                sumSquares += dR * dR + dG * dG + dB * dB;
+                double d0 = tilePatches[p]     - m0;
+                double d1 = tilePatches[p + 1] - m1;
+                double d2 = tilePatches[p + 2] - m2;
+                sumSquares += weight0 * d0 * d0 + d1 * d1 + d2 * d2;
             }
-            double detail = Math.Sqrt(sumSquares / matchPixels3) / FlatDetail;
+            double detail = Math.Sqrt(sumSquares / matchPixels3) / 255 / FlatDetail;
 
-            var (l, a, labB) = AverageLab(tileFloats, tileBase, matchPixels, labSsd);
+            var (l, a, labB) = AverageLab(tilePatches, tileBase, matchPixels, labSsd);
             tileColors[ti * 4]     = l;
             tileColors[ti * 4 + 1] = a;
             tileColors[ti * 4 + 2] = labB;
@@ -256,60 +261,38 @@ public static class PatchMatcher
         return tileColors;
     }
 
-    private static (float R, float G, float B) Average(float[] patches, int start, int matchPixels3)
+    // The average of each of a patch's 3 channels.
+    private static (double, double, double) Average(byte[] patches, int start, int matchPixels3)
     {
-        double r = 0, g = 0, b = 0;
+        long s0 = 0, s1 = 0, s2 = 0;
         for (int p = start; p < start + matchPixels3; p += 3)
         {
-            r += patches[p];
-            g += patches[p + 1];
-            b += patches[p + 2];
+            s0 += patches[p];
+            s1 += patches[p + 1];
+            s2 += patches[p + 2];
         }
-        int pixels = matchPixels3 / 3;
-        return ((float)(r / pixels), (float)(g / pixels), (float)(b / pixels));
+        double pixels = matchPixels3 / 3;
+        return (s0 / pixels, s1 / pixels, s2 / pixels);
     }
 
-    // A tile's average Color in LAB, from its patch floats.
+    // A tile's average color in LAB, from its patch bytes.
     private static (float L, float A, float B) AverageLab(
-        float[] tileFloats, int tileBase, int matchPixels, bool labSsd)
+        byte[] tilePatches, int tileBase, int matchPixels, bool labSsd)
     {
+        var (m0, m1, m2) = Average(tilePatches, tileBase, matchPixels * 3);
+
         if (labSsd)
-        {
-            // tileFloats holds (L/70, a/255, b/255). Undo normalisation to get raw LAB.
-            // a* and b* can be negative so we must NOT go through byte casting.
-            double sumL = 0, sumA = 0, sumB = 0;
-            for (int p = 0; p < matchPixels; p++)
-            {
-                sumL += tileFloats[tileBase + p * 3];
-                sumA += tileFloats[tileBase + p * 3 + 1];
-                sumB += tileFloats[tileBase + p * 3 + 2];
-            }
-            return ((float)(sumL / matchPixels * 70.0),
-                    (float)(sumA / matchPixels * 255.0),
-                    (float)(sumB / matchPixels * 255.0));
-        }
-        else
-        {
-            // tileFloats holds (R, G, B) in [0, 1]. Average, scale to bytes, convert to LAB.
-            double sumR = 0, sumG = 0, sumB = 0;
-            for (int p = 0; p < matchPixels; p++)
-            {
-                sumR += tileFloats[tileBase + p * 3];
-                sumG += tileFloats[tileBase + p * 3 + 1];
-                sumB += tileFloats[tileBase + p * 3 + 2];
-            }
-            byte avgR = (byte)(sumR / matchPixels * 255.0 + 0.5);
-            byte avgG = (byte)(sumG / matchPixels * 255.0 + 0.5);
-            byte avgB = (byte)(sumB / matchPixels * 255.0 + 0.5);
-            return ColorMath.RgbToLab(avgR, avgG, avgB);
-        }
+            return ((float)(m0 / LabLightnessScale), (float)(m1 - LabChromaOffset), (float)(m2 - LabChromaOffset));
+
+        // RGB: round the average to bytes and convert to LAB.
+        return ColorMath.RgbToLab((byte)(m0 + 0.5), (byte)(m1 + 0.5), (byte)(m2 + 0.5));
     }
 
     // CPU candidate pre-filter
 
     // For every tile, the K cards whose average color is closest to the tile's, nearest first.
     private static int[] SelectTopKCandidates(
-        float[] tileFloats, CardRecord[] cards,
+        byte[] tilePatches, CardRecord[] cards,
         int tileCount, int matchPixels3, int K, bool labSsd,
         ProgressReporter? progress, CancellationToken ct)
     {
@@ -327,7 +310,7 @@ public static class PatchMatcher
 
         Parallel.For(0, tileCount, new ParallelOptions { CancellationToken = ct }, ti =>
         {
-            var (tL, tA, tB) = AverageLab(tileFloats, ti * matchPixels3, matchPixels, labSsd);
+            var (tL, tA, tB) = AverageLab(tilePatches, ti * matchPixels3, matchPixels, labSsd);
 
             // Score every card by squared Euclidean LAB distance (no sqrt needed for ranking).
             float[] dists = distBuf.Value!;

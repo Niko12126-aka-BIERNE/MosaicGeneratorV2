@@ -17,13 +17,13 @@ public sealed class FallbackBackend(IMatchBackend primary, ProgressReporter? log
         Run(backend => backend.MatchColors(cardLab, tileLab, tileCount, progress, ct));
 
     public int[] MatchPatches(
-        float[] cardPatches, float[] tilePatches, int[] candidates,
+        byte[] cardPatches, byte[] tilePatches, int[] candidates,
         float[] cardColors, float[] tileColors,
-        int tileCount, int candidatesPerTile, int valuesPerPatch,
+        int tileCount, int candidatesPerTile, int pixelsPerPatch, int firstChannelWeight,
         Action<double>? progress, CancellationToken ct) =>
         Run(backend => backend.MatchPatches(
             cardPatches, tilePatches, candidates, cardColors, tileColors,
-            tileCount, candidatesPerTile, valuesPerPatch, progress, ct));
+            tileCount, candidatesPerTile, pixelsPerPatch, firstChannelWeight, progress, ct));
 
     private int[] Run(Func<IMatchBackend, int[]> step)
     {

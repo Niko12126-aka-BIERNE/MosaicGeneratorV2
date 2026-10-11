@@ -51,9 +51,9 @@ public sealed class CpuBackend : IMatchBackend
     }
 
     public int[] MatchPatches(
-        float[] cardPatches, float[] tilePatches, int[] candidates,
+        byte[] cardPatches, byte[] tilePatches, int[] candidates,
         float[] cardColors, float[] tileColors,
-        int tileCount, int candidatesPerTile, int valuesPerPatch,
+        int tileCount, int candidatesPerTile, int pixelsPerPatch, int firstChannelWeight,
         Action<double>? progress, CancellationToken ct)
     {
         var results = new int[tileCount];
@@ -61,6 +61,7 @@ public sealed class CpuBackend : IMatchBackend
 
         Parallel.For(0, tileCount, new ParallelOptions { CancellationToken = ct }, ti =>
         {
+            int valuesPerPatch = pixelsPerPatch * 3;
             int tileBase      = ti * valuesPerPatch;
             int candidateBase = ti * candidatesPerTile;
 
@@ -75,17 +76,19 @@ public sealed class CpuBackend : IMatchBackend
             for (int k = 0; k < candidatesPerTile; k++)
             {
                 int   c        = candidates[candidateBase + k];
-                int   cardBase = c * valuesPerPatch;
-                float dist     = 0f;
+                int  cardBase = c * valuesPerPatch;
+                long ssd      = 0;
 
-                for (int p = 0; p < valuesPerPatch; p++)
+                for (int p = 0; p < valuesPerPatch; p += 3)
                 {
-                    float diff = tilePatches[tileBase + p] - cardPatches[cardBase + p];
-                    dist += diff * diff;
+                    int d0 = tilePatches[tileBase + p]     - cardPatches[cardBase + p];
+                    int d1 = tilePatches[tileBase + p + 1] - cardPatches[cardBase + p + 1];
+                    int d2 = tilePatches[tileBase + p + 2] - cardPatches[cardBase + p + 2];
+                    ssd += firstChannelWeight * d0 * d0 + d1 * d1 + d2 * d2;
                 }
 
-                dist += MatchMath.ColorTerm(colorFactor, tileL, tileA, tileB,
-                    cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]);
+                float dist = MatchMath.PatchScore(ssd, MatchMath.ColorTerm(colorFactor, tileL, tileA, tileB,
+                    cardColors[c * 3], cardColors[c * 3 + 1], cardColors[c * 3 + 2]));
 
                 if (dist < bestDist)
                 {
