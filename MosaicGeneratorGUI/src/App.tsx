@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { dirname } from "@tauri-apps/api/path";
@@ -455,105 +455,112 @@ function AdvancedSettings(props: {
       <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-slate-700 dark:text-neutral-300">
         Advanced settings
       </summary>
-      <div className="space-y-5 border-t border-slate-200 dark:border-neutral-800 px-3 py-4">
-        <div>
-          <FieldLabel hint="Automatic picks the fastest one available, and switches to the processor if the graphics card runs into a problem.">
-            Run matching on
-          </FieldLabel>
-          <select
-            value={props.deviceSetting}
-            onChange={(e) => update({ device: e.target.value })}
-            className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-          >
-            <option value="auto">Automatic{devices[0] ? ` (${deviceLabel(devices[0])})` : ""}</option>
-            {devices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {deviceLabel(device)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {settings.patchMatch && (
-          <>
-            <div>
-              <FieldLabel hint="Size each card is compared at. Higher catches finer detail, but uses more memory and time.">
-                Detail resolution
-              </FieldLabel>
-              <NumberField value={settings.matchWidth} min={1} max={1024} suffix="px" onChange={(matchWidth) => update({ matchWidth })} />
-            </div>
-            <div>
-              <FieldLabel hint="How many of the closest-colored cards are compared in detail for each spot. Higher can find better matches, but is slower.">
-                Cards compared per spot
-              </FieldLabel>
-              <NumberField value={settings.matchCandidates} min={1} max={100000} onChange={(matchCandidates) => update({ matchCandidates })} />
-            </div>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={settings.labSsd}
-                onChange={(e) => update({ labSsd: e.target.checked })}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">Compare colors the way eyes see them</span>
-                <span className="block text-xs text-slate-500 dark:text-neutral-400">Slower, but can give better colors and contrast. (LAB color space)</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={settings.colorWeightEnabled}
-                onChange={(e) => update({ colorWeightEnabled: e.target.checked })}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">Keep color accurate in flat areas</span>
-                <span className="block text-xs text-slate-500 dark:text-neutral-400">
-                  Detail match can pick plain cards of the wrong color for flat areas and gradients. This makes
-                  color count more there, while text and edges keep their detail.
+      <div className="space-y-4 border-t border-slate-200 dark:border-neutral-800 px-3 py-4">
+        <SettingsGroup title="Detail match">
+          {settings.patchMatch ? (
+            <>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={settings.colorWeightEnabled}
+                  onChange={(e) => update({ colorWeightEnabled: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Keep color accurate in flat areas</span>
+                  <span className="block text-xs text-slate-500 dark:text-neutral-400">
+                    Detail match can pick plain cards of the wrong color for flat areas and gradients. This makes
+                    color count more there, while text and edges keep their detail.
+                  </span>
                 </span>
-              </span>
-            </label>
-            {settings.colorWeightEnabled && (
-              <div className="pl-6">
-                <FieldLabel hint="How much more color counts on flat areas. Higher gives more accurate color, but a little less contrast. 4 is a good balance.">
-                  Color weight
+              </label>
+              {settings.colorWeightEnabled && (
+                <div className="pl-6">
+                  <FieldLabel hint="How much more color counts on flat areas. Higher gives more accurate color, but a little less contrast. 4 is a good balance.">
+                    Color weight
+                  </FieldLabel>
+                  <NumberField value={settings.colorWeight} min={1} max={32} onChange={(colorWeight) => update({ colorWeight })} />
+                </div>
+              )}
+              <div>
+                <FieldLabel hint="How many of the closest-colored cards are compared in detail for each spot. Higher can find better matches, but is slower.">
+                  Cards compared per spot
                 </FieldLabel>
-                <NumberField value={settings.colorWeight} min={1} max={32} onChange={(colorWeight) => update({ colorWeight })} />
+                <NumberField value={settings.matchCandidates} min={1} max={100000} onChange={(matchCandidates) => update({ matchCandidates })} />
               </div>
-            )}
-          </>
-        )}
+              <div>
+                <FieldLabel hint="Size each card is compared at. Higher catches finer detail, but uses more memory and time.">
+                  Detail resolution
+                </FieldLabel>
+                <NumberField value={settings.matchWidth} min={1} max={1024} suffix="px" onChange={(matchWidth) => update({ matchWidth })} />
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={settings.labSsd}
+                  onChange={(e) => update({ labSsd: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Compare colors the way eyes see them</span>
+                  <span className="block text-xs text-slate-500 dark:text-neutral-400">Slower, but can give better colors and contrast. (LAB color space)</span>
+                </span>
+              </label>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-neutral-400">More options appear when Detail match is selected.</p>
+          )}
+        </SettingsGroup>
 
-        <div>
-          <FieldLabel hint="Transparent parts of the source image are treated as this color while matching. They stay transparent in the mosaic.">
-            Background for transparent areas
-          </FieldLabel>
-          <div className="flex items-center gap-2">
+        <SettingsGroup title="Transparency">
+          <div>
+            <FieldLabel hint="Spots of the source image that are more transparent than this are left empty instead of getting a card.">
+              Leave spots empty when more than {settings.transparencyThreshold}% transparent
+            </FieldLabel>
             <input
-              type="color"
-              value={settings.backgroundColor}
-              onChange={(e) => update({ backgroundColor: e.target.value })}
-              className="h-9 w-14 cursor-pointer rounded border border-slate-300 dark:border-neutral-700"
+              type="range"
+              min={0}
+              max={100}
+              value={settings.transparencyThreshold}
+              onChange={(e) => update({ transparencyThreshold: Number(e.target.value) })}
+              className="w-full max-w-sm accent-indigo-600"
             />
-            <span className="font-mono text-sm uppercase text-slate-600 dark:text-neutral-400">{settings.backgroundColor}</span>
           </div>
-        </div>
+          <div>
+            <FieldLabel hint="Transparent parts of the source image are treated as this color while matching. They stay transparent in the mosaic.">
+              Background for transparent areas
+            </FieldLabel>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={settings.backgroundColor}
+                onChange={(e) => update({ backgroundColor: e.target.value })}
+                className="h-9 w-14 cursor-pointer rounded border border-slate-300 dark:border-neutral-700"
+              />
+              <span className="font-mono text-sm uppercase text-slate-600 dark:text-neutral-400">{settings.backgroundColor}</span>
+            </div>
+          </div>
+        </SettingsGroup>
 
-        <div>
-          <FieldLabel hint="Spots of the source image that are more transparent than this are left empty instead of getting a card.">
-            Leave spots empty when more than {settings.transparencyThreshold}% transparent
-          </FieldLabel>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={settings.transparencyThreshold}
-            onChange={(e) => update({ transparencyThreshold: Number(e.target.value) })}
-            className="w-full max-w-sm accent-indigo-600"
-          />
-        </div>
+        <SettingsGroup title="Processing">
+          <div>
+            <FieldLabel hint="Automatic picks the fastest one available, and switches to the processor if the graphics card runs into a problem.">
+              Run matching on
+            </FieldLabel>
+            <select
+              value={props.deviceSetting}
+              onChange={(e) => update({ device: e.target.value })}
+              className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            >
+              <option value="auto">Automatic{devices[0] ? ` (${deviceLabel(devices[0])})` : ""}</option>
+              {devices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {deviceLabel(device)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </SettingsGroup>
 
         <button
           type="button"
@@ -575,6 +582,18 @@ function AdvancedSettings(props: {
         </button>
       </div>
     </details>
+  );
+}
+
+/** A titled group of settings inside Advanced settings. */
+function SettingsGroup(props: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-800/40">
+      <h3 className="border-b border-slate-200 dark:border-neutral-800 px-4 py-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+        {props.title}
+      </h3>
+      <div className="space-y-4 px-4 py-4">{props.children}</div>
+    </div>
   );
 }
 
