@@ -18,14 +18,29 @@ export async function suggestOutputPath(inputPath: string, deepZoom: boolean, pr
   const usePreferred = preferredFolder && (await sidecar.request("pathKind", { path: preferredFolder })).kind === "folder";
   const dir  = usePreferred ? preferredFolder : await dirname(inputPath);
   const stem = (await basename(inputPath)).replace(/\.[^.]+$/, "") + "_Mosaic";
-  const ext  = deepZoom ? "" : ".png";
+  return firstFreePath(dir, stem, 0, deepZoom);
+}
 
-  for (let n = 0; n < 1000; n++) {
+/**
+ * The output path for the next mosaic after one was saved to `path`: the number at the end of
+ * the name goes up by one ("_Mosaic" → "_Mosaic1", "_Mosaic1" → "_Mosaic2"), skipping names
+ * that are taken.
+ */
+export async function nextOutputPath(path: string, deepZoom: boolean): Promise<string> {
+  const name = (await basename(path)).replace(/\.png$/i, "");
+  const [, stem, number] = name.match(/^(.*?)(\d*)$/)!;
+  return firstFreePath(await dirname(path), stem, number ? Number(number) + 1 : 1, deepZoom);
+}
+
+/** The first of "<stem><n>", "<stem><n+1>"... in `dir` that doesn't exist yet. Number 0 is left out. */
+async function firstFreePath(dir: string, stem: string, start: number, deepZoom: boolean): Promise<string> {
+  const ext = deepZoom ? "" : ".png";
+  for (let n = start; n < start + 1000; n++) {
     const candidate = await join(dir, `${stem}${n === 0 ? "" : n}${ext}`);
     const { exists } = await sidecar.request("outputExists", { outputPath: candidate, deepZoom });
     if (!exists) return candidate;
   }
-  return join(dir, stem + ext);
+  return join(dir, `${stem}${start === 0 ? "" : start}${ext}`);
 }
 
 /** Converts an output path when switching between PNG (a .png file) and Deep Zoom (a folder). */

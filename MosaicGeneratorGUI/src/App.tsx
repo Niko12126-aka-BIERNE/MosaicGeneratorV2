@@ -5,7 +5,7 @@ import { dirname } from "@tauri-apps/api/path";
 import { sidecar } from "./sidecar/client";
 import type { CardFolderInfo, DeviceInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./settings";
-import { convertOutputPath, IMAGE_EXTENSIONS, suggestOutputPath } from "./paths";
+import { convertOutputPath, IMAGE_EXTENSIONS, nextOutputPath, suggestOutputPath } from "./paths";
 import { lastFolder, rememberFolder } from "./pickerFolders";
 import { useJob } from "./useJob";
 import { applyTheme, loadTheme, type Theme } from "./theme";
@@ -69,6 +69,21 @@ export default function App() {
   // A typed save path can point into a folder that doesn't exist, and the PNG writer won't create it.
   const outputFolder = useSidecarInfo(outputPath, async (path) => sidecar.request("pathKind", { path: await dirname(path) }));
   const outputFolderMissing = outputFolder.state === "ok" && outputFolder.value.kind !== "folder";
+
+  // After a finished mosaic, move on to the next name so another run (maybe with other
+  // settings) doesn't replace it.
+  useEffect(() => {
+    if (job.state.status !== "done" || !outputPath) return;
+    let current = true;
+    nextOutputPath(outputPath, settings.deepZoom).then((next) => {
+      if (!current) return;
+      setOutputPath(next);
+      setOutputConfirmed(false);
+    });
+    return () => {
+      current = false;
+    };
+  }, [job.state.status]);
 
   // Start the engine and find out which devices can run the matching.
   useEffect(() => {
