@@ -1,10 +1,15 @@
 using System.Collections.Concurrent;
+using System.IO.Enumeration;
 using System.Text.Json;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace MosaicGenerator.Core;
 
+/// <param name="FileName">
+/// The card's path relative to the card folder, with "/" between folders ("Set 2/card.png").
+/// Cards directly in the card folder are just their file name, as in earlier versions.
+/// </param>
 public readonly record struct CardRecord(string FileName, float L, float A, float B);
 
 public static class CardDatabase
@@ -88,7 +93,7 @@ public static class CardDatabase
 
         // Work out which cards are new (no data yet)
         string[] toProcess = diskFiles
-            .Where(f => !existing.ContainsKey(Path.GetFileName(f)))
+            .Where(f => !existing.ContainsKey(CardName(cardFolderPath, f)))
             .ToArray();
 
         if (toProcess.Length > 0)
@@ -105,7 +110,7 @@ public static class CardDatabase
                     new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
                     file =>
                     {
-                        string name = Path.GetFileName(file);
+                        string name = CardName(cardFolderPath, file);
                         try
                         {
                             var (l, a, b) = ComputeAverageLab(file, background);
@@ -161,7 +166,7 @@ public static class CardDatabase
 
         // Return only entries whose image file is present on disk
         var onDisk = new HashSet<string>(
-            diskFiles.Select(f => Path.GetFileName(f)!),
+            diskFiles.Select(f => CardName(cardFolderPath, f)),
             StringComparer.OrdinalIgnoreCase);
 
         return existing
@@ -174,17 +179,41 @@ public static class CardDatabase
             .ToArray();
     }
 
-    /// <summary>Paths of all supported image files directly inside <paramref name="cardFolderPath"/>.</summary>
+    /// <summary>
+    /// Paths of all supported image files in <paramref name="cardFolderPath"/> and all its
+    /// subfolders, sorted so every run sees them in the same order. Skipped: hidden and system
+    /// files and folders, folders that can't be read, and the tiles of zoomable viewer (Deep Zoom)
+    /// mosaics, in case one was saved inside the card folder.
+    /// </summary>
     public static string[] FindCardImages(string cardFolderPath)
     {
         if (!Directory.Exists(cardFolderPath))
             throw new DirectoryNotFoundException($"Card folder not found: {cardFolderPath}");
 
-        return Directory
-            .GetFiles(cardFolderPath)
-            .Where(f => ImageExtensions.Contains(Path.GetExtension(f)))
-            .ToArray();
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+        var files = new FileSystemEnumerable<string>(cardFolderPath, (ref FileSystemEntry entry) => entry.ToFullPath(), options)
+        {
+            ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                !entry.IsDirectory && ImageExtensions.Contains(Path.GetExtension(entry.FileName.ToString())),
+            ShouldRecursePredicate = (ref FileSystemEntry entry) => !IsDeepZoomTiles(entry.ToFullPath()),
+        };
+        return files.Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
+
+    /// <summary>
+    /// Whether <paramref name="folder"/> holds Deep Zoom tiles: it's named "&lt;name&gt;_files"
+    /// and has a "&lt;name&gt;.dzi" next to it (our output uses index_files and index.dzi).
+    /// </summary>
+    private static bool IsDeepZoomTiles(string folder)
+    {
+        string name = Path.GetFileName(folder);
+        return name.EndsWith("_files", StringComparison.OrdinalIgnoreCase) &&
+               File.Exists(Path.Combine(Path.GetDirectoryName(folder)!, name[..^"_files".Length] + ".dzi"));
+    }
+
+    /// <summary>The name a card is remembered by: see <see cref="CardRecord.FileName"/>.</summary>
+    private static string CardName(string cardFolderPath, string file) =>
+        Path.GetRelativePath(cardFolderPath, file).Replace('\\', '/');
 
     // Aspect ratio sampling
     public static float SampleAspectRatio(string cardFolderPath, int sampleCount = 20)

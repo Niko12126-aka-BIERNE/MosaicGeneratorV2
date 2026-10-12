@@ -21,7 +21,7 @@ if (args.Length < 2)
     Console.WriteLine();
     Console.WriteLine("Arguments:");
     Console.WriteLine("  <input-image>          Path to the source image");
-    Console.WriteLine("  <card-folder>          Path to the folder containing card images");
+    Console.WriteLine("  <card-folder>          Path to the folder containing card images (subfolders included)");
     Console.WriteLine("  [output]               Output path (optional)");
     Console.WriteLine("                           PNG mode  : path to .png file");
     Console.WriteLine("                           Deep Zoom : path to output folder");

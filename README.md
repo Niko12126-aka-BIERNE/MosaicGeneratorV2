@@ -116,7 +116,7 @@ MosaicGeneratorCLI.exe --list-devices
 | Argument         | Description |
 |------------------|-------------|
 | `<input-image>`  | Path to the source image to recreate as a mosaic. |
-| `<card-folder>`  | Path to the folder of tile/card images. Nothing is written to it; the card colors are remembered in the app's data folder (see [Data the app keeps](#data-the-app-keeps)). |
+| `<card-folder>`  | Path to the folder of tile/card images. Subfolders are searched too, at any depth (tiles of zoomable viewer mosaics saved inside it are skipped). Nothing is written to it; the card colors are remembered in the app's data folder (see [Data the app keeps](#data-the-app-keeps)). |
 | `[output]`       | Optional output path. For PNG mode, a path to a `.png` file; for Deep Zoom mode, a path to an output folder. If omitted, defaults to `<input-name>_Mosaic.png` (or a numbered variant if that already exists) in the current directory. |
 
 ### Options
