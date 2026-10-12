@@ -51,6 +51,23 @@ run this once in Terminal, which removes the download mark macOS checks:
 xattr -cr "/Applications/Mosaic Generator.app"
 ```
 
+### Getting cards to try it with
+
+Any folder of images works as a card folder. To try the app with trading cards, the script
+[`tools/download_cards.py`](tools/download_cards.py) downloads Pokémon TCG card images from the
+[Pokémon TCG API](https://pokemontcg.io), one subfolder per set. It needs Python 3.9 or newer
+and nothing else:
+
+```sh
+python download_cards.py                      # Base Set + the 3 newest sets, into ./pokemon_cards
+python download_cards.py --list-sets          # all sets and their ids
+python download_cards.py --sets base1 base2   # exactly these sets
+```
+
+Then choose the `pokemon_cards` folder as the card folder. Run `python download_cards.py --help`
+for all options. The images are © The Pokémon Company, Nintendo, Creatures and GAME FREAK, so
+they're for your own use only, which is why they aren't included here.
+
 ### Data the app keeps
 
 The app and the command-line tool remember each card folder's card colors, so the next run
