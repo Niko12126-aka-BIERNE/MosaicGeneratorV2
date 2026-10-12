@@ -44,6 +44,9 @@ public static class Handlers
     private static CardFolderInfoResult CardFolderInfo(PathRequest request)
     {
         string folder = RequirePath(request);
+        // Paths can be typed in the app, so they may not exist.
+        if (!Directory.Exists(folder))
+            throw new RequestException(File.Exists(folder) ? "This is a file, not a folder." : "This folder doesn't exist.");
         int    count  = CardDatabase.FindCardImages(folder).Length;
 
         return new CardFolderInfoResult(
@@ -54,7 +57,10 @@ public static class Handlers
 
     private static ImageInfoResult ImageInfo(PathRequest request)
     {
-        var info = Image.Identify(RequirePath(request));
+        string path = RequirePath(request);
+        if (!File.Exists(path))
+            throw new RequestException(Directory.Exists(path) ? "This is a folder, not an image." : "This file doesn't exist.");
+        var info = Image.Identify(path);
         return new ImageInfoResult(info.Width, info.Height);
     }
 

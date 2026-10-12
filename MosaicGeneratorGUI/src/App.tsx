@@ -66,6 +66,9 @@ export default function App() {
   // Re-checked when a run ends too, since that's when the output appears.
   const outputKey = outputPath && JSON.stringify({ outputPath, deepZoom: settings.deepZoom, run: job.state.status });
   const outputStatus = useSidecarInfo(outputKey, (key) => sidecar.request("outputExists", JSON.parse(key)));
+  // A typed save path can point into a folder that doesn't exist, and the PNG writer won't create it.
+  const outputFolder = useSidecarInfo(outputPath, async (path) => sidecar.request("pathKind", { path: await dirname(path) }));
+  const outputFolderMissing = outputFolder.state === "ok" && outputFolder.value.kind !== "folder";
 
   // Start the engine and find out which devices can run the matching.
   useEffect(() => {
@@ -114,6 +117,24 @@ export default function App() {
   function chooseCardFolder(path: string) {
     update({ cardFolderPath: path });
     rememberFolder("cardFolder", path);
+  }
+
+  // Paths typed into the fields. A typed path may not exist; the field then shows why.
+  function typeInput(path: string | null) {
+    if (path) chooseInput(path);
+    else update({ inputPath: null });
+  }
+
+  function typeCardFolder(path: string | null) {
+    if (path) chooseCardFolder(path);
+    else update({ cardFolderPath: null });
+  }
+
+  async function typeOutput(path: string | null) {
+    setOutputPath(path && convertOutputPath(path, settings.deepZoom));
+    setOutputConfirmed(false);
+    if (path && (await sidecar.request("pathKind", { path: await dirname(path) })).kind === "folder")
+      rememberFolder("output", await dirname(path));
   }
 
   async function pickOutput() {
@@ -180,6 +201,7 @@ export default function App() {
     if (cards.state === "error") return "The card folder can't be read.";
     if (cards.state === "ok" && cards.value.imageCount === 0) return "The card folder has no images.";
     if (!outputPath) return "Choose where to save the mosaic.";
+    if (outputFolderMissing) return "The folder to save the mosaic in doesn't exist.";
     if (layout.state === "ok" && layout.value.rows < 1)
       return "With these settings the mosaic has no rows. Use more cards across or wider cards.";
     if (image.state !== "ok" || cards.state !== "ok" || layout.state !== "ok") return "Reading your files…";
@@ -208,6 +230,7 @@ export default function App() {
               placeholder="The picture to rebuild out of cards"
               path={settings.inputPath}
               onBrowse={pickInput}
+              onCommit={typeInput}
               error={image.state === "error" ? image.message : null}
               detail={image.state === "ok" && `${image.value.width.toLocaleString()} × ${image.value.height.toLocaleString()} px`}
             />
@@ -216,6 +239,7 @@ export default function App() {
               placeholder="The folder with your card images"
               path={settings.cardFolderPath}
               onBrowse={pickCardFolder}
+              onCommit={typeCardFolder}
               error={cards.state === "error" ? cards.message : null}
               detail={cards.state === "ok" && <CardFolderDetail info={cards.value} />}
             />
@@ -271,6 +295,8 @@ export default function App() {
               placeholder="Where to save the mosaic"
               path={outputPath}
               onBrowse={pickOutput}
+              onCommit={typeOutput}
+              error={outputFolderMissing ? "This folder doesn't exist. Choose an existing folder to save in." : null}
               detail={
                 <>
                   {settings.deepZoom && "A folder with this name is created. Open index.html inside it to view the mosaic."}

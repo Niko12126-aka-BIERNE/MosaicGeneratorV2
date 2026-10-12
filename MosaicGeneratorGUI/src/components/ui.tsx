@@ -1,6 +1,7 @@
 // Small building blocks shared by the main screen.
 
 import { useEffect, useState, type ReactNode } from "react";
+import { isAbsolute } from "@tauri-apps/api/path";
 
 export function Section(props: { title: string; children: ReactNode }) {
   return (
@@ -20,25 +21,72 @@ export function FieldLabel(props: { children: ReactNode; hint?: ReactNode }) {
   );
 }
 
-/** A path shown read-only, with a Browse button. Details or an error go underneath. */
+/**
+ * A path that can be typed or pasted, or chosen with the Browse button. A typed path is used
+ * when the field loses focus or Enter is pressed; Escape undoes the typing. Details or an
+ * error go underneath.
+ */
 export function PathField(props: {
   label: string;
   path: string | null;
   placeholder: string;
   onBrowse: () => void;
+  /** A typed path, cleaned up and absolute, or null when the field was emptied. */
+  onCommit: (path: string | null) => void;
   detail?: ReactNode;
   error?: string | null;
 }) {
+  const [draft, setDraft] = useState(props.path ?? "");
+  const [typingError, setTypingError] = useState<string | null>(null);
+
+  // Follow paths set from outside (Browse, drag-and-drop, switching output type).
+  useEffect(() => {
+    setDraft(props.path ?? "");
+    setTypingError(null);
+  }, [props.path]);
+
+  async function commit() {
+    // Explorer's "Copy as path" wraps the path in quotes.
+    const path = draft.trim().replace(/^"(.*)"$/, "$1").trim();
+    if (path === (props.path ?? "")) {
+      setDraft(path);
+      setTypingError(null);
+      return;
+    }
+    if (path && !(await isAbsolute(path))) {
+      setTypingError("Enter the full path, starting from the drive or root folder.");
+      return;
+    }
+    setTypingError(null);
+    props.onCommit(path || null);
+  }
+
+  const error = typingError ?? props.error;
+
   return (
     <div>
       <FieldLabel>{props.label}</FieldLabel>
       <div className="flex gap-2">
-        <div
-          className="min-w-0 flex-1 truncate rounded-lg border border-slate-300 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/60 px-3 py-2 text-sm"
+        <input
+          type="text"
+          spellCheck={false}
+          value={draft}
+          placeholder={props.placeholder}
           title={props.path ?? undefined}
-        >
-          {props.path ?? <span className="text-slate-400 dark:text-neutral-500">{props.placeholder}</span>}
-        </div>
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") {
+              setDraft(props.path ?? "");
+              setTypingError(null);
+            }
+          }}
+          className={
+            "min-w-0 flex-1 rounded-lg border bg-white dark:bg-neutral-900 px-3 py-2 text-sm placeholder:text-slate-400 dark:placeholder:text-neutral-500 " +
+            (error ? "border-red-500 outline-red-500" : "border-slate-300 dark:border-neutral-700")
+          }
+        />
         <button
           type="button"
           onClick={props.onBrowse}
@@ -47,8 +95,8 @@ export function PathField(props: {
           Browse…
         </button>
       </div>
-      {props.error ? (
-        <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{props.error}</p>
+      {error ? (
+        <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{error}</p>
       ) : (
         props.detail && <div className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">{props.detail}</div>
       )}
