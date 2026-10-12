@@ -20,7 +20,10 @@ export interface Settings {
   device: string;
 }
 
-/** Same defaults as the engine (MosaicOptions.cs). */
+/**
+ * Same defaults as the engine (MosaicOptions.cs), except that color weight is on, since the
+ * GUI is meant to give a good result without tweaking.
+ */
 export const DEFAULT_SETTINGS: Settings = {
   inputPath: null,
   cardFolderPath: null,
@@ -31,7 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   matchWidth: 64,
   matchCandidates: 500,
   labSsd: false,
-  colorWeightEnabled: false,
+  colorWeightEnabled: true,
   colorWeight: 4, // MosaicOptions.RecommendedColorWeight
   backgroundColor: "#000000",
   transparencyThreshold: 70,
