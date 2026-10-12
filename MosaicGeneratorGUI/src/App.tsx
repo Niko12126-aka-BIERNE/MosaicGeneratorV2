@@ -4,7 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { dirname } from "@tauri-apps/api/path";
 import { sidecar } from "./sidecar/client";
 import type { CardFolderInfo, DeviceInfo, ImageInfo, MosaicLayout, MosaicOptions } from "./sidecar/protocol";
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./settings";
+import { DEFAULT_SETTINGS, loadSettings, matchesRecommended, RECOMMENDED_SETTINGS, saveSettings, type Settings } from "./settings";
 import { convertOutputPath, IMAGE_EXTENSIONS, nextOutputPath, suggestOutputPath } from "./paths";
 import { lastFolder, rememberFolder } from "./pickerFolders";
 import { useJob } from "./useJob";
@@ -170,6 +170,13 @@ export default function App() {
     setOutputConfirmed(false);
   }
 
+  function applyRecommendedSettings() {
+    const { deepZoom, ...rest } = RECOMMENDED_SETTINGS;
+    update(rest);
+    // Switching output type also changes the save path, so it goes through setDeepZoom.
+    if (deepZoom !== undefined && deepZoom !== settings.deepZoom) setDeepZoom(deepZoom);
+  }
+
   async function generate() {
     if (!settings.inputPath || !settings.cardFolderPath || !outputPath) return;
 
@@ -260,7 +267,10 @@ export default function App() {
             />
           </Section>
 
-          <Section title="Mosaic">
+          <Section
+            title="Mosaic"
+            action={<RecommendedSettings inUse={matchesRecommended(settings)} onUse={applyRecommendedSettings} />}
+          >
             <div>
               <FieldLabel hint="More cards across gives more detail, and a bigger output.">Size</FieldLabel>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -582,6 +592,20 @@ function AdvancedSettings(props: {
         </button>
       </div>
     </details>
+  );
+}
+
+function RecommendedSettings(props: { inUse: boolean; onUse: () => void }) {
+  if (props.inUse) return <span className="text-xs text-slate-500 dark:text-neutral-400">✓ Recommended settings</span>;
+  return (
+    <button
+      type="button"
+      onClick={props.onUse}
+      title="A good result for most images. Paths, device and background are kept."
+      className="rounded-md border border-indigo-300 dark:border-indigo-500/50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+    >
+      Use recommended settings
+    </button>
   );
 }
 

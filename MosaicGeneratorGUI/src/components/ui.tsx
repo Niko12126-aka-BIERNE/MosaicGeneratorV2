@@ -3,10 +3,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { isAbsolute } from "@tauri-apps/api/path";
 
-export function Section(props: { title: string; children: ReactNode }) {
+/** A card with a title. `action` goes at the right end of the title row. */
+export function Section(props: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-sm">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">{props.title}</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">{props.title}</h2>
+        {props.action}
+      </div>
       <div className="space-y-5">{props.children}</div>
     </section>
   );

@@ -1,5 +1,7 @@
 // The user's settings, remembered between sessions in the webview's local storage.
 
+import recommended from "./recommendedSettings.json";
+
 export interface Settings {
   inputPath: string | null;
   cardFolderPath: string | null;
@@ -40,6 +42,21 @@ export const DEFAULT_SETTINGS: Settings = {
   transparencyThreshold: 70,
   device: "auto",
 };
+
+/**
+ * What the "Use recommended settings" button sets, from recommendedSettings.json. Edit that
+ * file to change them. Settings left out of it (paths, device, background) are kept as they are.
+ */
+export const RECOMMENDED_SETTINGS = onlySettings(recommended);
+
+/** Makes a misspelled or unknown setting name in the JSON file a type error. */
+function onlySettings<T extends Partial<Settings> & Record<Exclude<keyof T, keyof Settings>, never>>(values: T): Partial<Settings> {
+  return values;
+}
+
+export function matchesRecommended(settings: Settings): boolean {
+  return (Object.keys(RECOMMENDED_SETTINGS) as (keyof Settings)[]).every((key) => settings[key] === RECOMMENDED_SETTINGS[key]);
+}
 
 const STORAGE_KEY = "mosaic-generator.settings.v1";
 

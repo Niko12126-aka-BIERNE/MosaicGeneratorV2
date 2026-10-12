@@ -1,0 +1,12 @@
+{
+  "cardsPerRow": 300,
+  "cardWidth": 200,
+  "patchMatch": true,
+  "deepZoom": true,
+  "matchWidth": 64,
+  "matchCandidates": 500,
+  "labSsd": false,
+  "colorWeightEnabled": true,
+  "colorWeight": 4,
+  "transparencyThreshold": 70
+}
